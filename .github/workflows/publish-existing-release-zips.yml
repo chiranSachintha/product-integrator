@@ -1,0 +1,191 @@
+name: Publish Existing Release ZIPs
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_release_version:
+        description: 'Existing release version to copy from, e.g. 2201.13.2 or 2201.13.2-rc1'
+        required: true
+        default: '2201.13.2'
+      target_release_version:
+        description: 'Target release version used in renamed artifacts, e.g. 5.0.0'
+        required: true
+        default: '5.0.0'
+      source_repository:
+        description: 'Source repository that already contains the release'
+        required: true
+        default: 'ballerina-platform/ballerina-distribution'
+      target_tag:
+        description: 'Release tag to create/update in this repository. Defaults to v<target_release_version>'
+        required: false
+        default: ''
+      is_prerelease:
+        description: 'Mark the target release as a pre-release'
+        required: true
+        default: 'false'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-existing-release-zips:
+    name: Publish Existing Release ZIPs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set release variables
+        id: vars
+        env:
+          SOURCE_RELEASE_VERSION: ${{ github.event.inputs.source_release_version }}
+          TARGET_RELEASE_VERSION: ${{ github.event.inputs.target_release_version }}
+          TARGET_TAG_INPUT: ${{ github.event.inputs.target_tag }}
+        run: |
+          DIST_VERSION="${SOURCE_RELEASE_VERSION%%-*}"
+          LONG_VERSION="${DIST_VERSION}-swan-lake"
+
+          if [ -n "$TARGET_TAG_INPUT" ]; then
+            TARGET_TAG="$TARGET_TAG_INPUT"
+          else
+            TARGET_TAG="v${TARGET_RELEASE_VERSION}"
+          fi
+
+          mkdir -p release-assets
+
+          {
+            echo "distVersion=$DIST_VERSION"
+            echo "longVersion=$LONG_VERSION"
+            echo "targetTag=$TARGET_TAG"
+            echo "targetReleaseVersion=$TARGET_RELEASE_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build update-command JAR
+        env:
+          SOURCE_RELEASE_VERSION: ${{ github.event.inputs.source_release_version }}
+        run: |
+          chmod +x gradlew
+          ./gradlew -p update-command -b standalone-build.gradle \
+            -PballerinaLangVersionOverride="${SOURCE_RELEASE_VERSION}" \
+            -PprojectVersionOverride="${SOURCE_RELEASE_VERSION}" \
+            jar
+
+      - name: Download release ZIPs from source release
+        env:
+          SOURCE_REPOSITORY: ${{ github.event.inputs.source_repository }}
+          SOURCE_RELEASE_VERSION: ${{ github.event.inputs.source_release_version }}
+          LONG_VERSION: ${{ steps.vars.outputs.longVersion }}
+          DIST_VERSION: ${{ steps.vars.outputs.distVersion }}
+        run: |
+          base_url="https://github.com/${SOURCE_REPOSITORY}/releases/download/v${SOURCE_RELEASE_VERSION}"
+
+          curl -fL "${base_url}/ballerina-${LONG_VERSION}-linux-arm.zip" -o "release-assets/source-linux-arm.zip"
+          curl -fL "${base_url}/ballerina-${LONG_VERSION}-windows.zip" -o "release-assets/source-windows.zip"
+          curl -fL "${base_url}/ballerina-${LONG_VERSION}-linux.zip" -o "release-assets/source-linux.zip"
+          curl -fL "${base_url}/ballerina-${LONG_VERSION}-macos.zip" -o "release-assets/source-macos.zip"
+          curl -fL "${base_url}/ballerina-${LONG_VERSION}-macos-arm.zip" -o "release-assets/source-macos-arm.zip"
+          curl -fL "${base_url}/ballerina-${DIST_VERSION}.zip" -o "release-assets/source-base.zip"
+
+      - name: Download repack assets
+        run: |
+          mkdir -p repack-assets/update-tool
+          cp ".github/resources/update_tool_setup.zip" "repack-assets/update_tool_setup.zip"
+          unzip -q "repack-assets/update_tool_setup.zip" -d "repack-assets/update-tool"
+          curl -fL "https://wso2.com/license/wso2-update/LICENSE.txt" -o "repack-assets/LICENSE"
+          find "update-command/build/libs" -maxdepth 1 -type f -name "update-command-*.jar" | head -n 1 > "repack-assets/update-command-jar-path.txt"
+
+      - name: Rewrite ZIPs for target release
+        env:
+          TARGET_RELEASE_VERSION: ${{ steps.vars.outputs.targetReleaseVersion }}
+        run: |
+          mkdir -p repack
+          UPDATE_COMMAND_JAR=$(cat "repack-assets/update-command-jar-path.txt")
+
+          if [ -z "$UPDATE_COMMAND_JAR" ] || [ ! -f "$UPDATE_COMMAND_JAR" ]; then
+            echo "Unable to find generated update-command jar"
+            exit 1
+          fi
+
+          rewrite_zip() {
+            local source_zip="$1"
+            local target_name="$2"
+            local work_dir="repack/${target_name}"
+            local root_dir
+            local product_home
+
+            rm -rf "$work_dir"
+            mkdir -p "$work_dir/unpack"
+            unzip -q "$source_zip" -d "$work_dir/unpack"
+
+            root_dir=$(find "$work_dir/unpack" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            if [ -z "$root_dir" ]; then
+              echo "Unable to find extracted root directory for $source_zip"
+              exit 1
+            fi
+
+            mv "$root_dir" "$work_dir/${target_name}"
+            product_home="$work_dir/${target_name}"
+
+            mkdir -p "$product_home/updates"
+            printf '%s\n' "$target_name" > "$product_home/updates/product.txt"
+
+            mkdir -p "$product_home/bin"
+            find "repack-assets/update-tool" -type f \( -name "*.sh" -o -name "*.ps1" \) -exec cp {} "$product_home/bin/" \;
+
+            mkdir -p "$product_home/bre/lib"
+            cp "$UPDATE_COMMAND_JAR" "$product_home/bre/lib/"
+
+            rm -f "$product_home/LICENSE" "$product_home/LICENSE.txt"
+            cp "repack-assets/LICENSE" "$product_home/LICENSE"
+
+            (
+              cd "$work_dir"
+              zip -qr "../../release-assets/${target_name}.zip" "${target_name}"
+            )
+          }
+
+          rewrite_zip "release-assets/source-linux-arm.zip" "wso2-integrator-dist-linux-arm-${TARGET_RELEASE_VERSION}"
+          rewrite_zip "release-assets/source-windows.zip" "wso2-integrator-dist-windows-${TARGET_RELEASE_VERSION}"
+          rewrite_zip "release-assets/source-linux.zip" "wso2-integrator-dist-linux-${TARGET_RELEASE_VERSION}"
+          rewrite_zip "release-assets/source-macos.zip" "wso2-integrator-dist-macos-${TARGET_RELEASE_VERSION}"
+          rewrite_zip "release-assets/source-macos-arm.zip" "wso2-integrator-dist-macos-arm-${TARGET_RELEASE_VERSION}"
+          rewrite_zip "release-assets/source-base.zip" "wso2-integrator-dist-${TARGET_RELEASE_VERSION}"
+
+          rm -f release-assets/source-*.zip
+
+      - name: Create or update target release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_TAG: ${{ steps.vars.outputs.targetTag }}
+          IS_PRERELEASE: ${{ github.event.inputs.is_prerelease }}
+          SOURCE_REPOSITORY: ${{ github.event.inputs.source_repository }}
+          SOURCE_RELEASE_VERSION: ${{ github.event.inputs.source_release_version }}
+        run: |
+          if gh release view "$TARGET_TAG" >/dev/null 2>&1; then
+            echo "Release ${TARGET_TAG} already exists in the target repository."
+          else
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              gh release create "$TARGET_TAG" \
+                --title "${TARGET_TAG#v}" \
+                --notes "Release ZIPs copied from ${SOURCE_REPOSITORY} tag v${SOURCE_RELEASE_VERSION}" \
+                --prerelease
+            else
+              gh release create "$TARGET_TAG" \
+                --title "${TARGET_TAG#v}" \
+                --notes "Release ZIPs copied from ${SOURCE_REPOSITORY} tag v${SOURCE_RELEASE_VERSION}"
+            fi
+          fi
+
+      - name: Upload ZIPs to target release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_TAG: ${{ steps.vars.outputs.targetTag }}
+        run: |
+          gh release upload "$TARGET_TAG" release-assets/* --clobber
