@@ -3,11 +3,18 @@ name: Compile
 on: 
   workflow_call:
     inputs: 
+      runner:
+        description: 'GitHub runner label for compile job'
+        default: 'Runner_support-product-integrator'
+        required: false
+        type: string
       runOnAWS:
         default: false
+        required: false
         type: boolean
       awsRunnerId:
-        default: 'codebuild-wso2_product-integrator-${{ github.run_id }}-${{ github.run_attempt }}'
+        default: 'Runner_support-product-integrator'
+        required: false
         type: string
       build_packed_installers:
         description: 'Whether to build a Balleirna, ICP, and Integrator packed installers'
@@ -56,7 +63,7 @@ jobs:
   compile:
     name: Build repo
     timeout-minutes: 45
-    runs-on: ${{ inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || (inputs.runOnAWS && inputs.awsRunnerId || 'ubuntu-latest') }}
     defaults:
       run:
         working-directory: lib/vscode
