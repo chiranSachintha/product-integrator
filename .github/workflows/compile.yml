@@ -272,6 +272,8 @@ jobs:
 
       - name: Build Linux packages - deb
         if: ${{ inputs.build_packed_installers == true}}
+        env:
+          SUPPORT_DIST_TOKEN: ${{ secrets.SUPPORT_BALLERINA_DIST_TOKEN != '' && secrets.SUPPORT_BALLERINA_DIST_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           cd ../..
           ROOT_DIR=$(pwd)
@@ -285,7 +287,10 @@ jobs:
           INTEGRATOR_VERSION="${{ inputs.integrator_version }}"
           INTEGRATOR_DIST_URL="https://github.com/wso2-enterprise/support-ballerina-distribution/releases/download/v${INTEGRATOR_VERSION}/wso2-integrator-dist-linux-${INTEGRATOR_VERSION}.zip"
           cd ./installers/linux-deb
-          wget -O integrator-dist.zip "$INTEGRATOR_DIST_URL"
+          if ! curl -fL -H "Authorization: Bearer ${SUPPORT_DIST_TOKEN}" -H "Accept: application/octet-stream" -o integrator-dist.zip "$INTEGRATOR_DIST_URL"; then
+            echo "Failed to download Integrator distribution. Ensure token has read access to wso2-enterprise/support-ballerina-distribution."
+            exit 1
+          fi
           wget -O icp.zip "$ICP_URL"
           ./build.sh integrator-dist.zip vscode-linux-x64.tar.gz icp.zip $INTEGRATOR_VERSION
           cd ${ROOT_DIR}
@@ -302,6 +307,8 @@ jobs:
         
       - name: Build Linux packages - rpm
         if: ${{ inputs.build_packed_installers == true}}
+        env:
+          SUPPORT_DIST_TOKEN: ${{ secrets.SUPPORT_BALLERINA_DIST_TOKEN != '' && secrets.SUPPORT_BALLERINA_DIST_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           cd ../..
           ROOT_DIR=$(pwd)
@@ -315,7 +322,10 @@ jobs:
           INTEGRATOR_VERSION="${{ inputs.integrator_version }}"
           INTEGRATOR_DIST_URL="https://github.com/wso2-enterprise/support-ballerina-distribution/releases/download/v${INTEGRATOR_VERSION}/wso2-integrator-dist-linux-${INTEGRATOR_VERSION}.zip"
           cd ./installers/linux-rpm
-          wget -O integrator-dist.zip "$INTEGRATOR_DIST_URL"
+          if ! curl -fL -H "Authorization: Bearer ${SUPPORT_DIST_TOKEN}" -H "Accept: application/octet-stream" -o integrator-dist.zip "$INTEGRATOR_DIST_URL"; then
+            echo "Failed to download Integrator distribution. Ensure token has read access to wso2-enterprise/support-ballerina-distribution."
+            exit 1
+          fi
           wget -O icp.zip "$ICP_URL"
           ./build.sh integrator-dist.zip vscode-linux-x64.tar.gz icp.zip $INTEGRATOR_VERSION
           cd ${ROOT_DIR}
@@ -330,6 +340,8 @@ jobs:
         
       - name: Build Linux packages - tar
         if: ${{ inputs.build_packed_installers == true}}
+        env:
+          SUPPORT_DIST_TOKEN: ${{ secrets.SUPPORT_BALLERINA_DIST_TOKEN != '' && secrets.SUPPORT_BALLERINA_DIST_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           cd ../..
           ROOT_DIR=$(pwd)
@@ -343,7 +355,10 @@ jobs:
           INTEGRATOR_VERSION="${{ inputs.integrator_version }}"
           INTEGRATOR_DIST_URL="https://github.com/wso2-enterprise/support-ballerina-distribution/releases/download/v${INTEGRATOR_VERSION}/wso2-integrator-dist-linux-${INTEGRATOR_VERSION}.zip"
           cd ./installers/linux-tar
-          wget -O integrator-dist.zip "$INTEGRATOR_DIST_URL"
+          if ! curl -fL -H "Authorization: Bearer ${SUPPORT_DIST_TOKEN}" -H "Accept: application/octet-stream" -o integrator-dist.zip "$INTEGRATOR_DIST_URL"; then
+            echo "Failed to download Integrator distribution. Ensure token has read access to wso2-enterprise/support-ballerina-distribution."
+            exit 1
+          fi
           wget -O icp.zip "$ICP_URL"
           ./build.sh integrator-dist.zip vscode-linux-x64.tar.gz icp.zip $INTEGRATOR_VERSION
           cd ${ROOT_DIR}
