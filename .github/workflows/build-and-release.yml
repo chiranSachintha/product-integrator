@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: 'Select runner type'
+        description: 'Select GitHub runner label'
         required: true
-        default: 'codebuild'
+        default: 'Runner_support-product-integrator'
         type: choice
         options:
-          - codebuild
           - ubuntu-latest
+          - Runner_support-product-integrator
       build_linux:
         description: 'Build for Linux'
         required: false
@@ -64,15 +64,12 @@ permissions:
   id-token: write
   contents: write     
 
-env:
-  awsRunnerId: codebuild-wso2_product-integrator-${{ github.run_id }}-${{ github.run_attempt }}  
-
 jobs:
   compile:
     uses: ./.github/workflows/compile.yml
     secrets: inherit  
     with:
-      runOnAWS: ${{ github.event.inputs.runner == 'codebuild' }}
+      runner: ${{ github.event.inputs.runner }}
       ballerina_extension_source: ${{ github.event.inputs.ballerina_extension_source }}
       ballerina_extension_version: ${{ github.event.inputs.ballerina_extension_version }}
       icp_version: ${{ github.event.inputs.icp_version }}
