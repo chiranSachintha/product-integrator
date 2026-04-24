@@ -37,7 +37,6 @@ JRE_ZIP="$5"
 VERSION="$6"
 ARCH="$7"
 BALLERINA_ASSETS_DIR="$WORK_DIR/../assets/ballerina"
-ICP_ASSETS_DIR="$WORK_DIR/../assets/icp"
 
 OUTPUT_PKG="WSO2_Integrator.pkg"
 BUNDLE_IDENTIFIER="com.wso2.integrator"
@@ -56,31 +55,6 @@ chmod +x "$WSO2_TARGET/WSO2 Integrator.app/Contents/MacOS"/* 2>/dev/null || true
 xattr -cr "$WSO2_TARGET/WSO2 Integrator.app"
 
 rm -rf "$EXTRACTION_TARGET/__MACOSX"
-
-# Prune choreo-cli to darwin/$ARCH only
-case "$ARCH" in
-    amd64|arm64) ;;
-    *) print_error "Unsupported ARCH '$ARCH' for choreo-cli pruning (expected amd64 or arm64)"; exit 1 ;;
-esac
-CHOREO_CLI_DIR="$WSO2_TARGET/WSO2 Integrator.app/Contents/Resources/app/extensions/wso2.wso2-integrator/resources/choreo-cli"
-if [ -d "$CHOREO_CLI_DIR" ]; then
-    print_info "Pruning choreo-cli binaries to darwin/$ARCH only"
-    for VERSION_DIR in "$CHOREO_CLI_DIR"/*/; do
-        [ -d "$VERSION_DIR" ] || continue
-        rm -rf "${VERSION_DIR}linux"
-        rm -rf "${VERSION_DIR}win32"
-        for ARCH_DIR in "${VERSION_DIR}darwin"/*/; do
-            [ -d "$ARCH_DIR" ] || continue
-            if [ "$(basename "$ARCH_DIR")" != "$ARCH" ]; then
-                rm -rf "$ARCH_DIR"
-            fi
-        done
-        if [ -d "${VERSION_DIR}darwin" ] && [ ! -d "${VERSION_DIR}darwin/$ARCH" ]; then
-            print_error "choreo-cli darwin/$ARCH not found after pruning in ${VERSION_DIR}"
-            exit 1
-        fi
-    done
-fi
 
 # Extract Ballerina zip
 print_info "Extracting Ballerina to package resources"
@@ -116,8 +90,8 @@ rm -rf "$BALLERINA_TARGET/examples"
 # Add custom Ballerina update assets
 print_info "Adding Ballerina update assets"
 mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/bre/lib" "$BALLERINA_TARGET/updates"
-cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
+cp "$BALLERINA_ASSETS_DIR/update_tool_setup.ps1" "$BALLERINA_TARGET/bin/update_tool_setup.ps1"
 cp "$BALLERINA_ASSETS_DIR/update-command.jar" "$BALLERINA_TARGET/bre/lib/update-command.jar"
 
 BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"
@@ -149,7 +123,6 @@ rm -rf "$BALLERINA_TEMP"
 # Replace bal script with the one from balscript and update version
 print_info "Replacing bal script with updated version from balscript"
 cp "$WORK_DIR/balscript/bal" "$BALLERINA_TARGET/bin/bal"
-cp "$WORK_DIR/balscript/update" "$BALLERINA_TARGET/bin/update"
 sed -i '' "s/@BALLERINA_VERSION@/$BALLERINA_VERSION/g" "$BALLERINA_TARGET/bin/bal"
 
 chmod +x "$BALLERINA_TARGET/bin"/*
@@ -164,23 +137,6 @@ ICP_UNZIPPED_FOLDER=$(unzip -Z1 "$ICP_ZIP" | head -1 | cut -d/ -f1)
 ICP_UNZIPPED_PATH="$EXTRACTION_TARGET/$ICP_UNZIPPED_FOLDER"
 mv "$ICP_UNZIPPED_PATH"/* "$ICP_TARGET"
 rm -rf "$ICP_UNZIPPED_PATH"
-
-print_info "Adding ICP update assets"
-mkdir -p "$ICP_TARGET/bin" "$ICP_TARGET/updates"
-cp "$ICP_ASSETS_DIR/LICENSE" "$ICP_TARGET/LICENSE"
-cp "$ICP_ASSETS_DIR/update_tool_setup.sh" "$ICP_TARGET/bin/update_tool_setup.sh"
-cp "$WORK_DIR/balscript/update_icp" "$ICP_TARGET/bin/update_icp"
-ICP_UPDATES_TEMP="$WORK_DIR/icp_updates_temp"
-rm -rf "$ICP_UPDATES_TEMP"
-mkdir -p "$ICP_UPDATES_TEMP"
-unzip -o "$ICP_ASSETS_DIR/updates.zip" -d "$ICP_UPDATES_TEMP"
-if [ -d "$ICP_UPDATES_TEMP/updates" ]; then
-    cp -R "$ICP_UPDATES_TEMP/updates/." "$ICP_TARGET/updates/"
-else
-    cp -R "$ICP_UPDATES_TEMP/." "$ICP_TARGET/updates/"
-fi
-rm -rf "$ICP_UPDATES_TEMP"
-
 chmod +x "$ICP_TARGET/bin"/*
 
 # Modify icp.sh to use the JRE from shared dependencies directory
@@ -191,8 +147,8 @@ if [ -f "$ICP_SCRIPT" ]; then
     sed -i '' -E "s|[[:<:]]java[[:>:]]|\"\$SCRIPT_DIR\"/../../dependencies/$JRE_FOLDER/bin/java|g" "$ICP_SCRIPT"
 fi
 
-# Fix ZIP epoch timestamps — unzip preserves 1980-01-01 dates from ZIP archives
-find "$WSO2_TARGET/WSO2 Integrator.app" -exec touch {} +
+
+
 
 # Build the component package
 pkgbuild --root "$EXTRACTION_TARGET" \

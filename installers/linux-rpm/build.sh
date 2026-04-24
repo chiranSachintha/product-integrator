@@ -36,7 +36,6 @@ ICP_ZIP="$4"
 JRE_ZIP="$5"
 VERSION="${6:-1.0.0}"
 BALLERINA_ASSETS_DIR="$WORK_DIR/../assets/ballerina"
-ICP_ASSETS_DIR="$WORK_DIR/../assets/icp"
 
 # Check if input files exist
 if [ ! -f "$BALLERINA_ZIP" ]; then
@@ -89,18 +88,6 @@ mkdir -p "$EXTRACTION_TARGET"
 print_info "Extracting WSO2 Integrator..."
 tar -xzf "$INTEGRATOR_TAR_GZ" -C "$INTEGRATOR_TARGET" --strip-components=1
 
-# Prune choreo-cli to linux/amd64 only
-CHOREO_CLI_DIR="$INTEGRATOR_TARGET/resources/app/extensions/wso2.wso2-integrator/resources/choreo-cli"
-if [ -d "$CHOREO_CLI_DIR" ]; then
-    print_info "Pruning choreo-cli binaries to linux/amd64 only"
-    for VERSION_DIR in "$CHOREO_CLI_DIR"/*/; do
-        [ -d "$VERSION_DIR" ] || continue
-        rm -rf "${VERSION_DIR}darwin"
-        rm -rf "${VERSION_DIR}win32"
-        rm -rf "${VERSION_DIR}linux/arm64"
-    done
-fi
-
 # Extract Ballerina zip
 print_info "Extracting Ballerina to components..."
 mkdir -p "$COMPONENTS_DIR"
@@ -144,9 +131,8 @@ fi
 # Add custom Ballerina update assets
 print_info "Adding Ballerina update assets"
 mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/bre/lib" "$BALLERINA_TARGET/updates"
-cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
-cp "$WORK_DIR/balscript/update" "$BALLERINA_TARGET/bin/update"
+cp "$BALLERINA_ASSETS_DIR/update_tool_setup.ps1" "$BALLERINA_TARGET/bin/update_tool_setup.ps1"
 cp "$BALLERINA_ASSETS_DIR/update-command.jar" "$BALLERINA_TARGET/bre/lib/update-command.jar"
 
 BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"
@@ -177,23 +163,6 @@ ICP_UNZIPPED_FOLDER=$(unzip -Z1 "$ICP_ZIP" | head -1 | cut -d/ -f1)
 ICP_UNZIPPED_PATH="$EXTRACTION_TARGET/$ICP_UNZIPPED_FOLDER"
 mv "$ICP_UNZIPPED_PATH"/* "$ICP_TARGET"
 rm -rf "$ICP_UNZIPPED_PATH"
-
-print_info "Adding ICP update assets"
-mkdir -p "$ICP_TARGET/bin" "$ICP_TARGET/updates"
-cp "$ICP_ASSETS_DIR/LICENSE" "$ICP_TARGET/LICENSE"
-cp "$ICP_ASSETS_DIR/update_tool_setup.sh" "$ICP_TARGET/bin/update_tool_setup.sh"
-cp "$WORK_DIR/balscript/update_icp" "$ICP_TARGET/bin/update_icp"
-ICP_UPDATES_TEMP="$WORK_DIR/icp_updates_temp"
-rm -rf "$ICP_UPDATES_TEMP"
-mkdir -p "$ICP_UPDATES_TEMP"
-unzip -o "$ICP_ASSETS_DIR/updates.zip" -d "$ICP_UPDATES_TEMP"
-if [ -d "$ICP_UPDATES_TEMP/updates" ]; then
-    cp -R "$ICP_UPDATES_TEMP/updates/." "$ICP_TARGET/updates/"
-else
-    cp -R "$ICP_UPDATES_TEMP/." "$ICP_TARGET/updates/"
-fi
-rm -rf "$ICP_UPDATES_TEMP"
-
 chmod +x "$ICP_TARGET/bin"/*
 
 # Modify icp.sh to use the JRE from shared dependencies directory
