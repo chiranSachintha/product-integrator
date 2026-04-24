@@ -36,6 +36,7 @@ ICP_ZIP="$4"
 JRE_ZIP="$5"
 VERSION="$6"
 ARCH="$7"
+BALLERINA_ASSETS_DIR="$WORK_DIR/../assets/ballerina"
 
 OUTPUT_PKG="WSO2_Integrator.pkg"
 BUNDLE_IDENTIFIER="com.wso2.integrator"
@@ -85,6 +86,24 @@ mv "$BALLERINA_TEMP"/* "$BALLERINA_TARGET"
 # Remove unwanted Ballerina folders
 rm -rf "$BALLERINA_TARGET/docs"
 rm -rf "$BALLERINA_TARGET/examples"
+
+# Add custom Ballerina update assets
+print_info "Adding Ballerina update assets"
+mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/bre/lib" "$BALLERINA_TARGET/updates"
+cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
+cp "$BALLERINA_ASSETS_DIR/update_tool_setup.ps1" "$BALLERINA_TARGET/bin/update_tool_setup.ps1"
+cp "$BALLERINA_ASSETS_DIR/update-command.jar" "$BALLERINA_TARGET/bre/lib/update-command.jar"
+
+BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"
+rm -rf "$BALLERINA_UPDATES_TEMP"
+mkdir -p "$BALLERINA_UPDATES_TEMP"
+unzip -o "$BALLERINA_ASSETS_DIR/updates.zip" -d "$BALLERINA_UPDATES_TEMP"
+if [ -d "$BALLERINA_UPDATES_TEMP/updates" ]; then
+    cp -R "$BALLERINA_UPDATES_TEMP/updates/." "$BALLERINA_TARGET/updates/"
+else
+    cp -R "$BALLERINA_UPDATES_TEMP/." "$BALLERINA_TARGET/updates/"
+fi
+rm -rf "$BALLERINA_UPDATES_TEMP"
 
 # Extract JRE zip into shared dependencies directory
 print_info "Extracting JRE to shared dependencies directory"

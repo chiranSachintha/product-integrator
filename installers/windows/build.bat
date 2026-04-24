@@ -34,6 +34,7 @@ if "%~6"=="" (
     exit /b 1
 )
 
+set "BALLERINA_ASSETS_DIR=%~dp0..\assets\ballerina"
 
 REM Clean up any leftover payload directory from a previous build
 if exist ".\WixPackage\payload" rmdir /s /q ".\WixPackage\payload"
@@ -52,6 +53,14 @@ REM and remove docs/examples to reduce installer size
 powershell -nologo -noprofile -command "& { Add-Type -A 'System.IO.Compression.FileSystem'; $extractDir = 'C:\tmp_bal'; Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $extractDir | Out-Null; [IO.Compression.ZipFile]::ExtractToDirectory('%~1', $extractDir); $unzippedFolder = (Get-ChildItem $extractDir -Directory | Select-Object -First 1).FullName; $ballerinaTarget = '.\WixPackage\payload\Integrator\components\ballerina'; New-Item -ItemType Directory -Force -Path $ballerinaTarget | Out-Null; $distDir = Join-Path $unzippedFolder 'distributions'; if (Test-Path $distDir) { $distFolder = (Get-ChildItem $distDir -Directory | Select-Object -First 1).FullName; if ($distFolder) { Copy-Item -Path \"$distFolder\*\" -Destination $ballerinaTarget -Recurse -Force } }; Remove-Item -Recurse -Force (Join-Path $ballerinaTarget 'docs') -ErrorAction SilentlyContinue; Remove-Item -Recurse -Force (Join-Path $ballerinaTarget 'examples') -ErrorAction SilentlyContinue; Remove-Item -Recurse -Force $extractDir }"
 if errorlevel 1 (
     echo Ballerina extraction failed
+    exit /b 1
+)
+
+REM Add custom Ballerina update assets
+echo Adding Ballerina update assets
+powershell -nologo -noprofile -command "& { $ErrorActionPreference = 'Stop'; Add-Type -A 'System.IO.Compression.FileSystem'; $assetsDir = '%BALLERINA_ASSETS_DIR%'; $ballerinaTarget = '.\WixPackage\payload\Integrator\components\ballerina'; $binTarget = Join-Path $ballerinaTarget 'bin'; $breLibTarget = Join-Path $ballerinaTarget 'bre\lib'; $updatesTarget = Join-Path $ballerinaTarget 'updates'; $updatesExtractDir = 'C:\tmp_bal_updates'; New-Item -ItemType Directory -Force -Path $binTarget, $breLibTarget, $updatesTarget | Out-Null; Copy-Item -Force (Join-Path $assetsDir 'update_tool_setup.sh') (Join-Path $binTarget 'update_tool_setup.sh'); Copy-Item -Force (Join-Path $assetsDir 'update_tool_setup.ps1') (Join-Path $binTarget 'update_tool_setup.ps1'); Copy-Item -Force (Join-Path $assetsDir 'update-command.jar') (Join-Path $breLibTarget 'update-command.jar'); Remove-Item -Recurse -Force $updatesExtractDir -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $updatesExtractDir | Out-Null; [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $assetsDir 'updates.zip'), $updatesExtractDir); $updatesRoot = Join-Path $updatesExtractDir 'updates'; if (Test-Path $updatesRoot) { Copy-Item -Path (Join-Path $updatesRoot '*') -Destination $updatesTarget -Recurse -Force } else { Copy-Item -Path (Join-Path $updatesExtractDir '*') -Destination $updatesTarget -Recurse -Force }; Remove-Item -Recurse -Force $updatesExtractDir }"
+if errorlevel 1 (
+    echo Ballerina update asset staging failed
     exit /b 1
 )
 
