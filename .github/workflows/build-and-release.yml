@@ -495,6 +495,7 @@ jobs:
     steps:
       - name: Enable Git long paths
         shell: pwsh
+        working-directory: .
         run: git config --system core.longpaths true
 
       - name: Checkout
