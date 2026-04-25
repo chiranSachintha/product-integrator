@@ -1,0 +1,21 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ ! -x "$SCRIPT_DIR/update_tool_setup.sh" ]; then
+    echo "Error: update_tool_setup.sh not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+(cd "$SCRIPT_DIR" && ./update_tool_setup.sh)
+
+ICP_UPDATE_TOOL="$(find "$SCRIPT_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 | head -1)"
+
+if [ -z "$ICP_UPDATE_TOOL" ] || [ ! -x "$ICP_UPDATE_TOOL" ]; then
+    echo "Error: ICP update executable not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+exec "$ICP_UPDATE_TOOL" "$@"
