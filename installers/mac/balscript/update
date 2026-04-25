@@ -1,0 +1,55 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BALLERINA_BIN_DIR="$SCRIPT_DIR"
+ICP_BIN_DIR="$(cd "$SCRIPT_DIR/../icp/bin" && pwd)"
+
+run_ballerina_update() {
+    "$BALLERINA_BIN_DIR/bal" update "$@"
+}
+
+run_icp_update() {
+    local icp_update_tool="$ICP_BIN_DIR/wso2update_darwin_arm64"
+
+    if [ ! -x "$icp_update_tool" ]; then
+        icp_update_tool="$(find "$ICP_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 | head -1)"
+    fi
+
+    if [ -z "$icp_update_tool" ] || [ ! -x "$icp_update_tool" ]; then
+        if [ -x "$ICP_BIN_DIR/update_tool_setup.sh" ]; then
+            "$ICP_BIN_DIR/update_tool_setup.sh"
+        fi
+        icp_update_tool="$(find "$ICP_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 | head -1)"
+    fi
+
+    if [ -z "$icp_update_tool" ] || [ ! -x "$icp_update_tool" ]; then
+        echo "Error: ICP update executable not found in $ICP_BIN_DIR"
+        exit 1
+    fi
+
+    "$icp_update_tool" "$@"
+}
+
+COMMAND="${1:-}"
+
+case "$COMMAND" in
+    ballerina)
+        shift
+        run_ballerina_update "$@"
+        ;;
+    icp)
+        shift
+        run_icp_update "$@"
+        ;;
+    *)
+        if [ "$#" -eq 0 ]; then
+            run_ballerina_update
+            run_icp_update
+            exit 0
+        fi
+        run_ballerina_update "$@"
+        run_icp_update "$@"
+        ;;
+esac
