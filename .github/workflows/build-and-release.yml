@@ -803,21 +803,21 @@ jobs:
           Invoke-WebRequest -Uri $JRE_URL -OutFile "jre.zip"
           .\build.bat .\ballerina.zip $BALLERINA_VERSION .\VSCode-win32-x64.zip .\icp.zip .\jre.zip $INTEGRATOR_VERSION
 
-      - name: Login to AWS
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Upload Windows artifacts to S3
-        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-        shell: bash
-        working-directory: .
-        run: |
-          S3_PATH="s3://${{ secrets.AWS_S3_BUCKET }}/wi/${{ github.run_id }}/"
-          aws s3 cp installers/windows/WixPackage/bin/x64/Release/en-US/ "${S3_PATH}" --recursive --exclude "*" --include "*.msi"
-
+      # - name: Login to AWS
+      #   uses: aws-actions/configure-aws-credentials@v5
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: us-east-1
+      #
+      # - name: Upload Windows artifacts to S3
+      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+      #   shell: bash
+      #   working-directory: .
+      #   run: |
+      #     S3_PATH="s3://${{ secrets.AWS_S3_BUCKET }}/wi/${{ github.run_id }}/"
+      #     aws s3 cp installers/windows/WixPackage/bin/x64/Release/en-US/ "${S3_PATH}" --recursive --exclude "*" --include "*.msi"
+      #
       - name: Upload Windows artifacts
         if: ${{ github.event.inputs.build_packed_installers == 'true' }}
         uses: actions/upload-artifact@v4
@@ -826,38 +826,37 @@ jobs:
           path: |
             installers\windows\WixPackage\bin\x64\Release\en-US\*.msi
           if-no-files-found: error
-      
-      - name: cosign-installer
-        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-        uses: sigstore/cosign-installer@v3.5.0
-      - name: Sign the msi installer
-        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-        run: |
-          cd ../..
-          cosign sign-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --output-certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --output-signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --yes
-      - name: Verify signature of the msi installer
-        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-        run: |
-          cd ../..
-          cosign verify-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --certificate-identity=https://github.com/wso2/product-integrator/.github/workflows/build-and-release.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-
-          
-      - name: Generate Hashes for msi installer
-        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-        run: |
-          cd ../..
-          openssl dgst -sha256 -out installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sha256 installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi 
-
-      - name: Upload Signatures and Hashes for msi installer
-        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Signatures-and-Hashes-MSI
-          path: |
-            installers\windows\*.pem
-            installers\windows\*.sig
-            installers\windows\*.sha256
-          if-no-files-found: error
+      #
+      # - name: cosign-installer
+      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+      #   uses: sigstore/cosign-installer@v3.5.0
+      # - name: Sign the msi installer
+      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+      #   run: |
+      #     cd ../..
+      #     cosign sign-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --output-certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --output-signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --yes
+      # - name: Verify signature of the msi installer
+      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+      #   run: |
+      #     cd ../..
+      #     cosign verify-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --certificate-identity=https://github.com/wso2/product-integrator/.github/workflows/build-and-release.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+      #
+      # - name: Generate Hashes for msi installer
+      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+      #   run: |
+      #     cd ../..
+      #     openssl dgst -sha256 -out installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sha256 installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi 
+      #
+      # - name: Upload Signatures and Hashes for msi installer
+      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: Signatures-and-Hashes-MSI
+      #     path: |
+      #       installers\windows\*.pem
+      #       installers\windows\*.sig
+      #       installers\windows\*.sha256
+      #     if-no-files-found: error
 
   create-release:
     name: Create Release
