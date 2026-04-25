@@ -90,6 +90,7 @@ rm -rf "$BALLERINA_TARGET/examples"
 # Add custom Ballerina update assets
 print_info "Adding Ballerina update assets"
 mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/bre/lib" "$BALLERINA_TARGET/updates"
+cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.ps1" "$BALLERINA_TARGET/bin/update_tool_setup.ps1"
 cp "$BALLERINA_ASSETS_DIR/update-command.jar" "$BALLERINA_TARGET/bre/lib/update-command.jar"
