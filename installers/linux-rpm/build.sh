@@ -36,6 +36,7 @@ ICP_ZIP="$4"
 JRE_ZIP="$5"
 VERSION="${6:-1.0.0}"
 BALLERINA_ASSETS_DIR="$WORK_DIR/../assets/ballerina"
+ICP_ASSETS_DIR="$WORK_DIR/../assets/icp"
 
 # Check if input files exist
 if [ ! -f "$BALLERINA_ZIP" ]; then
@@ -164,6 +165,23 @@ ICP_UNZIPPED_FOLDER=$(unzip -Z1 "$ICP_ZIP" | head -1 | cut -d/ -f1)
 ICP_UNZIPPED_PATH="$EXTRACTION_TARGET/$ICP_UNZIPPED_FOLDER"
 mv "$ICP_UNZIPPED_PATH"/* "$ICP_TARGET"
 rm -rf "$ICP_UNZIPPED_PATH"
+
+print_info "Adding ICP update assets"
+mkdir -p "$ICP_TARGET/bin" "$ICP_TARGET/updates"
+cp "$ICP_ASSETS_DIR/LICENSE" "$ICP_TARGET/LICENSE"
+cp "$ICP_ASSETS_DIR/update_tool_setup.sh" "$ICP_TARGET/bin/update_tool_setup.sh"
+cp "$ICP_ASSETS_DIR/update_tool_setup.ps1" "$ICP_TARGET/bin/update_tool_setup.ps1"
+ICP_UPDATES_TEMP="$WORK_DIR/icp_updates_temp"
+rm -rf "$ICP_UPDATES_TEMP"
+mkdir -p "$ICP_UPDATES_TEMP"
+unzip -o "$ICP_ASSETS_DIR/updates.zip" -d "$ICP_UPDATES_TEMP"
+if [ -d "$ICP_UPDATES_TEMP/updates" ]; then
+    cp -R "$ICP_UPDATES_TEMP/updates/." "$ICP_TARGET/updates/"
+else
+    cp -R "$ICP_UPDATES_TEMP/." "$ICP_TARGET/updates/"
+fi
+rm -rf "$ICP_UPDATES_TEMP"
+
 chmod +x "$ICP_TARGET/bin"/*
 
 # Modify icp.sh to use the JRE from shared dependencies directory
