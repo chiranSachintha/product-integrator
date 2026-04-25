@@ -149,6 +149,7 @@ rm -rf "$BALLERINA_TEMP"
 # Replace bal script with the one from balscript and update version
 print_info "Replacing bal script with updated version from balscript"
 cp "$WORK_DIR/balscript/bal" "$BALLERINA_TARGET/bin/bal"
+cp "$WORK_DIR/balscript/update" "$BALLERINA_TARGET/bin/update"
 sed -i '' "s/@BALLERINA_VERSION@/$BALLERINA_VERSION/g" "$BALLERINA_TARGET/bin/bal"
 
 chmod +x "$BALLERINA_TARGET/bin"/*
