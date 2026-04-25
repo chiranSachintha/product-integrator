@@ -4,7 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BALLERINA_BIN_DIR="$SCRIPT_DIR"
-ICP_BIN_DIR="$(cd "$SCRIPT_DIR/../icp/bin" && pwd)"
+ICP_BIN_DIR="$(cd "$SCRIPT_DIR/../../icp/bin" && pwd)"
 
 run_ballerina_update() {
     "$BALLERINA_BIN_DIR/bal" update "$@"
@@ -32,6 +32,11 @@ run_icp_update() {
     "$icp_update_tool" "$@"
 }
 
+if [ "$#" -lt 1 ]; then
+    echo "Usage: update <ballerina|icp> [args...]"
+    exit 1
+fi
+
 COMMAND="${1:-}"
 
 case "$COMMAND" in
@@ -44,12 +49,7 @@ case "$COMMAND" in
         run_icp_update "$@"
         ;;
     *)
-        if [ "$#" -eq 0 ]; then
-            run_ballerina_update
-            run_icp_update
-            exit 0
-        fi
-        run_ballerina_update "$@"
-        run_icp_update "$@"
+        echo "Usage: update <ballerina|icp> [args...]"
+        exit 1
         ;;
 esac
