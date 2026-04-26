@@ -3,8 +3,6 @@ setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
 set "ICP_UPDATE_SCRIPT=%SCRIPT_DIR%..\..\icp\bin\update_icp.bat"
-set "MI_CACHE_DIR=%USERPROFILE%\.wso2-mi\micro-integrator"
-set "SI_CACHE_DIR=%USERPROFILE%\.wso2-si\streaming-integrator"
 
 set "COMMAND=%~1"
 if "%COMMAND%"=="" goto usage
@@ -28,11 +26,9 @@ goto collect_args
 
 if /I "%COMMAND%"=="ballerina" goto ballerina
 if /I "%COMMAND%"=="icp" goto icp
-if /I "%COMMAND%"=="mi" goto mi
-if /I "%COMMAND%"=="si" goto si
 
 :usage
-echo Usage: update ^<ballerina^|icp^|mi^|si^> [args...]
+echo Usage: update ^<ballerina^|icp^> [args...]
 exit /b 1
 
 :ballerina
@@ -107,151 +103,3 @@ if defined FIRST_ARG (
 )
 call "%ICP_UPDATE_SCRIPT%" %FORWARD_ARGS%
 exit /b %errorlevel%
-
-:mi
-if /I "%FIRST_ARG%"=="-h" goto mi_help
-if /I "%FIRST_ARG%"=="--help" goto mi_help
-if /I "%FIRST_ARG%"=="help" goto mi_help
-
-set "MI_UPDATE_TOOL="
-for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
-    set "MI_UPDATE_TOOL=%%F"
-    goto mi_found
-)
-
-:mi_found
-if not defined MI_UPDATE_TOOL (
-    echo Error: MI update executable not found for Windows. Please open/create a MI project. MI not in your machine.
-    exit /b 1
-)
-
-if defined FIRST_ARG (
-    if defined REMAINING_ARGS (
-        set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
-    ) else (
-        set "FORWARD_ARGS=%FIRST_ARG%"
-    )
-) else (
-    set "FORWARD_ARGS="
-)
-call "%MI_UPDATE_TOOL%" %FORWARD_ARGS%
-exit /b %errorlevel%
-
-:mi_help
-echo Update MI connects to the WSO2 Update service, finds product updates that are
-echo relevant to the installed MI, and applies them.
-echo(
-echo To learn more about WSO2 Update, visit https://wso2.com/updates
-echo(
-echo Usage:
-echo   update mi [flags]
-echo   update mi [command]
-echo(
-echo Examples:
-echo   update mi version
-echo   update mi help check
-echo   update mi
-echo   update mi --username user@wso2.com --password my_password
-echo   update mi --level 3.0.0.10
-echo   update mi --dry-run
-echo(
-echo Available Commands:
-echo   apply-hotfix   Apply an available hotfix.
-echo   apply-update   Apply a created update zip file to the product.
-echo   check          Check available new levels for the product.
-echo   completion     Generate shell autocompletion scripts.
-echo   create-docker  Create a Docker image of the product.
-echo   create-update  Create an update zip file for the product.
-echo   current-state  Show current details of the product.
-echo   help           Help about any command.
-echo   revert-hotfix  Revert the most recently applied hotfix.
-echo   version        Print the update tool version information.
-echo(
-echo Flags:
-echo   -b, --backup string     Specify updates backup directory
-echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
-echo       --continue          Merge resolved conflicts
-echo       --dry-run           Simulate the update
-echo   -h, --help              help for update mi
-echo   -l, --level string      Level in which the product should be updated to
-echo       --no-backup         Skip product backup
-echo   -p, --password string   Specify your WSO2 account password
-echo       --revert            Revert to the previous update level
-echo       --template string   Specify the template output
-echo   -u, --username string   Specify your WSO2 account email
-echo   -v, --verbose           Enable verbose mode
-exit /b 0
-
-:si
-if /I "%FIRST_ARG%"=="-h" goto si_help
-if /I "%FIRST_ARG%"=="--help" goto si_help
-if /I "%FIRST_ARG%"=="help" goto si_help
-
-set "SI_UPDATE_TOOL="
-for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
-    set "SI_UPDATE_TOOL=%%F"
-    goto si_found
-)
-
-:si_found
-if not defined SI_UPDATE_TOOL (
-    echo Error: SI update executable not found for Windows. Please open/create a SI project. SI not in your machine.
-    exit /b 1
-)
-
-if defined FIRST_ARG (
-    if defined REMAINING_ARGS (
-        set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
-    ) else (
-        set "FORWARD_ARGS=%FIRST_ARG%"
-    )
-) else (
-    set "FORWARD_ARGS="
-)
-call "%SI_UPDATE_TOOL%" %FORWARD_ARGS%
-exit /b %errorlevel%
-
-:si_help
-echo Update SI connects to the WSO2 Update service, finds product updates that are
-echo relevant to the installed SI, and applies them.
-echo(
-echo To learn more about WSO2 Update, visit https://wso2.com/updates
-echo(
-echo Usage:
-echo   update si [flags]
-echo   update si [command]
-echo(
-echo Examples:
-echo   update si version
-echo   update si help check
-echo   update si
-echo   update si --username user@wso2.com --password my_password
-echo   update si --level 3.0.0.10
-echo   update si --dry-run
-echo(
-echo Available Commands:
-echo   apply-hotfix   Apply an available hotfix.
-echo   apply-update   Apply a created update zip file to the product.
-echo   check          Check available new levels for the product.
-echo   completion     Generate shell autocompletion scripts.
-echo   create-docker  Create a Docker image of the product.
-echo   create-update  Create an update zip file for the product.
-echo   current-state  Show current details of the product.
-echo   help           Help about any command.
-echo   revert-hotfix  Revert the most recently applied hotfix.
-echo   version        Print the update tool version information.
-echo(
-echo Flags:
-echo   -b, --backup string     Specify updates backup directory
-echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
-echo       --continue          Merge resolved conflicts
-echo       --dry-run           Simulate the update
-echo   -h, --help              help for update si
-echo   -l, --level string      Level in which the product should be updated to
-echo       --no-backup         Skip product backup
-echo   -p, --password string   Specify your WSO2 account password
-echo       --revert            Revert to the previous update level
-echo       --template string   Specify the template output
-echo   -u, --username string   Specify your WSO2 account email
-echo   -v, --verbose           Enable verbose mode
-exit /b 0
