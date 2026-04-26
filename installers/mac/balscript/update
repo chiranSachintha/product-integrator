@@ -6,8 +6,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BALLERINA_BIN_DIR="$SCRIPT_DIR"
 ICP_UPDATE_SCRIPT="$SCRIPT_DIR/../../icp/bin/update_icp"
 
+print_usage() {
+    cat <<'EOF'
+Usage:
+  update ballerina [flags]
+  update icp [flags]
+
+Commands:
+  ballerina   Run the Ballerina update flow.
+  icp         Run the ICP update flow.
+EOF
+}
+
 if [ "$#" -lt 1 ]; then
-    echo "Usage: update <ballerina|icp> [args...]"
+    print_usage
     exit 1
 fi
 
@@ -16,13 +28,49 @@ shift
 
 case "$COMMAND" in
     ballerina)
+        case "${1:-}" in
+            -h|--help|help)
+                cat <<'EOF'
+Update Ballerina is a command-line tool for checking and applying updates to the bundled Ballerina runtime.
+
+Usage:
+  update ballerina [flags]
+  update ballerina [command]
+
+Examples:
+  update ballerina version
+  update ballerina --dry-run
+  update ballerina --username user@wso2.com --password my_password
+
+Flags:
+  -b, --backup string     Specify updates backup directory
+  -c, --channel string    Channel updates should be downloaded from (default "full")
+      --continue          Merge resolved conflicts
+      --dry-run           Simulate the update
+  -h, --help              help for update ballerina
+  -l, --level string      Level in which the product should be updated to
+      --no-backup         Skip product backup
+  -p, --password string   Specify your WSO2 account password
+      --revert            Revert to the previous update level
+      --template string   Specify the template output
+  -u, --username string   Specify your WSO2 account email
+  -v, --verbose           Enable verbose mode
+EOF
+                exit 0
+                ;;
+        esac
         exec "$BALLERINA_BIN_DIR/bal" update "$@"
         ;;
     icp)
+        case "${1:-}" in
+            -h|--help|help)
+                exec "$ICP_UPDATE_SCRIPT" --help
+                ;;
+        esac
         exec "$ICP_UPDATE_SCRIPT" "$@"
         ;;
     *)
-        echo "Usage: update <ballerina|icp> [args...]"
+        print_usage
         exit 1
         ;;
 esac
