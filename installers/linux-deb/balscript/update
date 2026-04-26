@@ -1,0 +1,79 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BALLERINA_BIN_DIR="$SCRIPT_DIR"
+ICP_UPDATE_SCRIPT="$SCRIPT_DIR/../../icp/bin/update_icp"
+
+print_ballerina_help() {
+    cat <<'EOF'
+Update Ballerina connects to the WSO2 Update service, finds product updates that are
+relevant to the installed Ballerina, and applies them.
+
+To learn more about WSO2 Update, visit https://wso2.com/updates
+
+Usage:
+  update ballerina [flags]
+  update ballerina [command]
+
+Examples:
+  update ballerina version
+  update ballerina help check
+  update ballerina
+  update ballerina --username user@wso2.com --password my_password
+  update ballerina --level 3.0.0.10
+  update ballerina --dry-run
+
+Available Commands:
+  apply-hotfix   Apply an available hotfix.
+  apply-update   Apply a created update zip file to the product.
+  check          Check available new levels for the product.
+  completion     Generate shell autocompletion scripts.
+  create-docker  Create a Docker image of the product.
+  create-update  Create an update zip file for the product.
+  current-state  Show current details of the product.
+  help           Help about any command.
+  revert-hotfix  Revert the most recently applied hotfix.
+  version        Print the update tool version information.
+
+Flags:
+  -b, --backup string     Specify updates backup directory
+  -c, --channel string    Channel updates should be downloaded from (default "full")
+      --continue          Merge resolved conflicts
+      --dry-run           Simulate the update
+  -h, --help              help for update ballerina
+  -l, --level string      Level in which the product should be updated to
+      --no-backup         Skip product backup
+  -p, --password string   Specify your WSO2 account password
+      --revert            Revert to the previous update level
+      --template string   Specify the template output
+  -u, --username string   Specify your WSO2 account email
+  -v, --verbose           Enable verbose mode
+EOF
+}
+
+if [ "$#" -lt 1 ]; then
+    echo "Usage: update <ballerina|icp> [args...]"
+    exit 1
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    ballerina)
+        if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+            print_ballerina_help
+            exit 0
+        fi
+        exec "$BALLERINA_BIN_DIR/bal" update "$@"
+        ;;
+    icp)
+        exec "$ICP_UPDATE_SCRIPT" "$@"
+        ;;
+    *)
+        echo "Usage: update <ballerina|icp> [args...]"
+        exit 1
+        ;;
+esac
