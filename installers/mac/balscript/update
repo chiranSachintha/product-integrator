@@ -31,7 +31,10 @@ case "$COMMAND" in
         case "${1:-}" in
             -h|--help|help)
                 cat <<'EOF'
-Update Ballerina is a command-line tool for checking and applying updates to the bundled Ballerina runtime.
+Update Ballerina connects to the WSO2 Update service, finds product updates that are
+relevant to the installed Ballerina, and applies them.
+
+To learn more about WSO2 Update, visit https://wso2.com/updates
 
 Usage:
   update ballerina [flags]
@@ -39,8 +42,23 @@ Usage:
 
 Examples:
   update ballerina version
-  update ballerina --dry-run
+  update ballerina help check
+  update ballerina
   update ballerina --username user@wso2.com --password my_password
+  update ballerina --level 3.0.0.10
+  update ballerina --dry-run
+
+Available Commands:
+  apply-hotfix   Apply an available hotfix.
+  apply-update   Apply a created update zip file to the product.
+  check          Check available new levels for the product.
+  completion     Generate shell autocompletion scripts.
+  create-docker  Create a Docker image of the product.
+  create-update  Create an update zip file for the product.
+  current-state  Show current details of the product.
+  help           Help about any command.
+  revert-hotfix  Revert the most recently applied hotfix.
+  version        Print the update tool version information.
 
 Flags:
   -b, --backup string     Specify updates backup directory
