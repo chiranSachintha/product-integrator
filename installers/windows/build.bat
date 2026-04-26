@@ -98,13 +98,32 @@ if exist ".\WixPackage\payload\Integrator\components\icp\bin\icp.bat" (
 
 REM Copy balscript/bal to ballerina bin directory and replace version placeholder
 set "BAL_SRC=%~dp0WixPackage\balscript\bal.bat"
+set "UPDATE_SRC=%~dp0WixPackage\balscript\update.bat"
 set "BAL_TARGET=.\WixPackage\payload\Integrator\components\ballerina\bin\bal.bat"
+set "UPDATE_TARGET=.\WixPackage\payload\Integrator\components\ballerina\bin\update.bat"
 if exist "%BAL_SRC%" (
     if not exist ".\WixPackage\payload\Integrator\components\ballerina\bin" mkdir ".\WixPackage\payload\Integrator\components\ballerina\bin"
     powershell -nologo -noprofile -command "& { (Get-Content '%BAL_SRC%') -replace '@BALLERINA_VERSION@', '%~2' | Set-Content '%BAL_TARGET%' }"
     echo Copied bal.bat to ballerina bin directory with version %~2
 ) else (
     echo bal.bat not found at %BAL_SRC%
+)
+if exist "%UPDATE_SRC%" (
+    copy /Y "%UPDATE_SRC%" "%UPDATE_TARGET%" >nul
+    echo Copied update.bat to ballerina bin directory
+) else (
+    echo update.bat not found at %UPDATE_SRC%
+)
+
+REM Copy update_icp.bat to ICP bin directory
+set "UPDATE_ICP_SRC=%~dp0WixPackage\balscript\update_icp.bat"
+set "UPDATE_ICP_TARGET=.\WixPackage\payload\Integrator\components\icp\bin\update_icp.bat"
+if exist "%UPDATE_ICP_SRC%" (
+    if not exist ".\WixPackage\payload\Integrator\components\icp\bin" mkdir ".\WixPackage\payload\Integrator\components\icp\bin"
+    copy /Y "%UPDATE_ICP_SRC%" "%UPDATE_ICP_TARGET%" >nul
+    echo Copied update_icp.bat to ICP bin directory
+) else (
+    echo update_icp.bat not found at %UPDATE_ICP_SRC%
 )
 
 
