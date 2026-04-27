@@ -65,6 +65,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Add custom Ballerina update assets
+echo Adding Ballerina update assets
+powershell -nologo -noprofile -command "& { $ErrorActionPreference = 'Stop'; Add-Type -A 'System.IO.Compression.FileSystem'; $assetsDir = '%BALLERINA_ASSETS_DIR%'; $ballerinaTarget = '.\WixPackage\payload\Integrator\components\ballerina'; $binTarget = Join-Path $ballerinaTarget 'bin'; $breLibTarget = Join-Path $ballerinaTarget 'bre\lib'; $updatesTarget = Join-Path $ballerinaTarget 'updates'; $updatesExtractDir = 'C:\tmp_bal_updates'; New-Item -ItemType Directory -Force -Path $binTarget, $breLibTarget, $updatesTarget | Out-Null; Copy-Item -Force (Join-Path $assetsDir 'LICENSE') (Join-Path $ballerinaTarget 'LICENSE'); Copy-Item -Force (Join-Path $assetsDir 'update_tool_setup.ps1') (Join-Path $binTarget 'update_tool_setup.ps1'); Copy-Item -Force (Join-Path $assetsDir 'update-command.jar') (Join-Path $breLibTarget 'update-command.jar'); Remove-Item -Recurse -Force $updatesExtractDir -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $updatesExtractDir | Out-Null; [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $assetsDir 'updates.zip'), $updatesExtractDir); $updatesRoot = Join-Path $updatesExtractDir 'updates'; if (Test-Path $updatesRoot) { Copy-Item -Path (Join-Path $updatesRoot '*') -Destination $updatesTarget -Recurse -Force } else { Copy-Item -Path (Join-Path $updatesExtractDir '*') -Destination $updatesTarget -Recurse -Force }; Remove-Item -Recurse -Force $updatesExtractDir }"
+if errorlevel 1 (
+    echo Ballerina update asset staging failed
+    exit /b 1
+)
+
 REM Prune choreo-cli to win32/amd64 and linux/amd64 (WSL) only
 powershell -nologo -noprofile -command "& { $choreoCliDir = '.\WixPackage\payload\Integrator\resources\app\extensions\wso2.wso2-integrator\resources\choreo-cli'; if (Test-Path $choreoCliDir) { Get-ChildItem $choreoCliDir -Directory | ForEach-Object { $vDir = $_.FullName; foreach ($target in @((Join-Path $vDir 'darwin'), (Join-Path $vDir 'linux\arm64'))) { if (Test-Path $target) { try { Remove-Item $target -Recurse -Force -ErrorAction Stop } catch [System.Management.Automation.ItemNotFoundException] { } catch { Write-Warning ('choreo-cli prune warning: ' + $_.Exception.Message) } } }; Write-Host ('Pruned choreo-cli in ' + $_.Name) } } else { Write-Host 'choreo-cli directory not found, skipping prune' } }"
 
