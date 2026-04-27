@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BALLERINA_BIN_DIR="$SCRIPT_DIR"
 ICP_UPDATE_SCRIPT="$SCRIPT_DIR/../../icp/bin/update_icp"
 MI_CACHE_DIR="$HOME/.wso2-mi/micro-integrator"
+SI_CACHE_DIR="$HOME/.wso2-si/streaming-integrator"
 
 print_usage() {
     cat <<'EOF'
@@ -13,11 +14,13 @@ Usage:
   update ballerina [flags]
   update icp [flags]
   update mi [flags]
+  update si [flags]
 
 Commands:
   ballerina   Run the Ballerina update flow.
   icp         Run the ICP update flow.
   mi          Run the MI update flow.
+  si          Run the SI update flow.
 EOF
 }
 
@@ -165,6 +168,82 @@ EOF
         fi
 
         exec "$MI_UPDATE_TOOL" "$@"
+        ;;
+    si)
+        case "${1:-}" in
+            -h|--help|help)
+                cat <<'EOF'
+Update SI connects to the WSO2 Update service, finds product updates that are
+relevant to the installed SI, and applies them.
+
+To learn more about WSO2 Update, visit https://wso2.com/updates
+
+Usage:
+  update si [flags]
+  update si [command]
+
+Examples:
+  update si version
+  update si help check
+  update si
+  update si --username user@wso2.com --password my_password
+  update si --level 3.0.0.10
+  update si --dry-run
+
+Available Commands:
+  apply-hotfix   Apply an available hotfix.
+  apply-update   Apply a created update zip file to the product.
+  check          Check available new levels for the product.
+  completion     Generate shell autocompletion scripts.
+  create-docker  Create a Docker image of the product.
+  create-update  Create an update zip file for the product.
+  current-state  Show current details of the product.
+  help           Help about any command.
+  revert-hotfix  Revert the most recently applied hotfix.
+  version        Print the update tool version information.
+
+Flags:
+  -b, --backup string     Specify updates backup directory
+  -c, --channel string    Channel updates should be downloaded from (default "full")
+      --continue          Merge resolved conflicts
+      --dry-run           Simulate the update
+  -h, --help              help for update si
+  -l, --level string      Level in which the product should be updated to
+      --no-backup         Skip product backup
+  -p, --password string   Specify your WSO2 account password
+      --revert            Revert to the previous update level
+      --template string   Specify the template output
+  -u, --username string   Specify your WSO2 account email
+  -v, --verbose           Enable verbose mode
+EOF
+                exit 0
+                ;;
+        esac
+
+        SI_UPDATE_TOOL="$(find "$SI_CACHE_DIR" -type f -path '*/bin/wso2update_*' -perm -111 2>/dev/null | sort -V | tail -1)"
+        if [ -n "$SI_UPDATE_TOOL" ]; then
+            exec "$SI_UPDATE_TOOL" "$@"
+        fi
+
+        SI_SETUP_SCRIPT="$(find "$SI_CACHE_DIR" -type f -path '*/bin/update_tool_setup.sh' -perm -111 2>/dev/null | sort -V | tail -1)"
+        if [ -z "$SI_SETUP_SCRIPT" ]; then
+            echo "Error: update_tool_setup.sh not found for SI. Please open/create a SI project. SI not in your machine."
+            exit 1
+        fi
+
+        SI_BIN_DIR="$(dirname "$SI_SETUP_SCRIPT")"
+        SI_UPDATE_TOOL="$(find "$SI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 2>/dev/null | head -1)"
+        if [ -z "$SI_UPDATE_TOOL" ]; then
+            (cd "$SI_BIN_DIR" && ./update_tool_setup.sh)
+            SI_UPDATE_TOOL="$(find "$SI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 2>/dev/null | head -1)"
+        fi
+
+        if [ -z "$SI_UPDATE_TOOL" ]; then
+            echo "Error: SI update executable not found in $SI_BIN_DIR"
+            exit 1
+        fi
+
+        exec "$SI_UPDATE_TOOL" "$@"
         ;;
     *)
         print_usage
