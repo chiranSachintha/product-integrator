@@ -5,10 +5,33 @@ set "SCRIPT_DIR=%~dp0"
 set "ICP_UPDATE_SCRIPT=%SCRIPT_DIR%..\..\icp\bin\update_icp.bat"
 set "MI_CACHE_DIR=%USERPROFILE%\.wso2-mi\micro-integrator"
 set "SI_CACHE_DIR=%USERPROFILE%\.wso2-si\streaming-integrator"
+set "PROFILE_STATE_FILE=%USERPROFILE%\.wso2-integrator\selected-profile"
 
-set "COMMAND=%~1"
-if "%COMMAND%"=="" goto usage
-shift
+if /I "%~1"=="-h" goto top_help
+if /I "%~1"=="--help" goto top_help
+if /I "%~1"=="help" goto top_help
+
+if "%~1"=="" (
+    call :resolve_profile_command
+    set "COMMAND=!RESOLVED_COMMAND!"
+) else (
+    if /I "%~1"=="ballerina" (
+        set "COMMAND=ballerina"
+        shift
+    ) else if /I "%~1"=="icp" (
+        set "COMMAND=icp"
+        shift
+    ) else if /I "%~1"=="mi" (
+        set "COMMAND=mi"
+        shift
+    ) else if /I "%~1"=="si" (
+        set "COMMAND=si"
+        shift
+    ) else (
+        call :resolve_profile_command
+        set "COMMAND=!RESOLVED_COMMAND!"
+    )
+)
 
 set "FIRST_ARG=%~1"
 shift
@@ -32,8 +55,26 @@ if /I "%COMMAND%"=="mi" goto mi
 if /I "%COMMAND%"=="si" goto si
 
 :usage
+echo Usage: update [flags]
 echo Usage: update ^<ballerina^|icp^|mi^|si^> [args...]
 exit /b 1
+
+:top_help
+echo Usage: update [flags]
+echo Usage: update ^<ballerina^|icp^|mi^|si^> [args...]
+echo(
+echo The default command is selected from the active Integration Profile.
+exit /b 0
+
+:resolve_profile_command
+set "RESOLVED_COMMAND=ballerina"
+if exist "%PROFILE_STATE_FILE%" (
+    set "PROFILE_VALUE="
+    set /p PROFILE_VALUE=<"%PROFILE_STATE_FILE%"
+    if /I "%PROFILE_VALUE%"=="WSO2 Integrator: MI" set "RESOLVED_COMMAND=mi"
+    if /I "%PROFILE_VALUE%"=="WSO2 Integrator: SI" set "RESOLVED_COMMAND=si"
+)
+goto :eof
 
 :ballerina
 if /I "%FIRST_ARG%"=="-h" goto ballerina_help

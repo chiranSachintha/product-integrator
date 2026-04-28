@@ -7,6 +7,7 @@ BALLERINA_BIN_DIR="$SCRIPT_DIR"
 ICP_UPDATE_SCRIPT="$SCRIPT_DIR/../../icp/bin/update_icp"
 MI_CACHE_DIR="$HOME/.wso2-mi/micro-integrator"
 SI_CACHE_DIR="$HOME/.wso2-si/streaming-integrator"
+PROFILE_STATE_FILE="$HOME/.wso2-integrator/selected-profile"
 
 print_ballerina_help() {
     cat <<'EOF'
@@ -56,26 +57,70 @@ EOF
 }
 
 if [ "$#" -lt 1 ]; then
-    echo "Usage: update <ballerina|icp|mi|si> [args...]"
-    exit 1
+    :
 fi
 
-COMMAND="$1"
-shift
+read_selected_profile_command() {
+    if [ ! -f "$PROFILE_STATE_FILE" ]; then
+        echo "ballerina"
+        return
+    fi
+
+    local selected_profile
+    selected_profile="$(tr -d '\r' < "$PROFILE_STATE_FILE" 2>/dev/null | head -n 1)"
+    case "$selected_profile" in
+        "WSO2 Integrator: MI")
+            echo "mi"
+            ;;
+        "WSO2 Integrator: SI")
+            echo "si"
+            ;;
+        *)
+            echo "ballerina"
+            ;;
+    esac
+}
+
+if [ "$#" -ge 1 ]; then
+    case "$1" in
+        -h|--help|help)
+            echo "Usage: update [flags]"
+            echo "Usage: update <ballerina|icp|mi|si> [args...]"
+            exit 0
+            ;;
+        ballerina|icp|mi|si)
+            COMMAND="$1"
+            shift
+            COMMAND_ARGS=("$@")
+            ;;
+        -*)
+            COMMAND="$(read_selected_profile_command)"
+            COMMAND_ARGS=("$@")
+            ;;
+        *)
+            echo "Usage: update [flags]"
+            echo "Usage: update <ballerina|icp|mi|si> [args...]"
+            exit 1
+            ;;
+    esac
+else
+    COMMAND="$(read_selected_profile_command)"
+    COMMAND_ARGS=()
+fi
 
 case "$COMMAND" in
     ballerina)
-        if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+        if [ "${COMMAND_ARGS[0]:-}" = "-h" ] || [ "${COMMAND_ARGS[0]:-}" = "--help" ]; then
             print_ballerina_help
             exit 0
         fi
-        exec "$BALLERINA_BIN_DIR/bal" update "$@"
+        exec "$BALLERINA_BIN_DIR/bal" update "${COMMAND_ARGS[@]}"
         ;;
     icp)
-        exec "$ICP_UPDATE_SCRIPT" "$@"
+        exec "$ICP_UPDATE_SCRIPT" "${COMMAND_ARGS[@]}"
         ;;
     mi)
-        case "${1:-}" in
+        case "${COMMAND_ARGS[0]:-}" in
             -h|--help|help)
                 cat <<'EOF'
 Update MI connects to the WSO2 Update service, finds product updates that are
@@ -134,10 +179,10 @@ EOF
             exit 1
         fi
 
-        exec "$MI_UPDATE_TOOL" "$@"
+        exec "$MI_UPDATE_TOOL" "${COMMAND_ARGS[@]}"
         ;;
     si)
-        case "${1:-}" in
+        case "${COMMAND_ARGS[0]:-}" in
             -h|--help|help)
                 cat <<'EOF'
 Update SI connects to the WSO2 Update service, finds product updates that are
@@ -196,7 +241,7 @@ EOF
             exit 1
         fi
 
-        exec "$SI_UPDATE_TOOL" "$@"
+        exec "$SI_UPDATE_TOOL" "${COMMAND_ARGS[@]}"
         ;;
     *)
         echo "Usage: update <ballerina|icp|mi|si> [args...]"

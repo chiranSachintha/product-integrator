@@ -33,6 +33,7 @@ import { fetchProjectInfo, fetchExtendedProjectInfo } from './bi/utils';
 import { activateProjectExplorer } from './bi/project-explorer/activate';
 import { ProjectExplorerEntryProvider } from './bi/project-explorer/project-explorer-provider';
 import { checkIfMiProject } from './mi/utils';
+import { writeSelectedProfileState } from './utils/profileState';
 import { WebviewManager } from './webviewManager';
 import { ExtensionAPIs } from './extensionAPIs';
 import { registerCommands } from './commands';
@@ -110,16 +111,24 @@ async function syncStartupSelectedProfile(): Promise<void> {
     const selectedProfile = config.get<string>('selectedProfile');
     const startupProfile = getStartupProfileFromInstalledExtensions();
 
-    if (!startupProfile || selectedProfile === startupProfile) {
+    if (isSelectedProfileValue(selectedProfile)) {
+        writeSelectedProfileState(selectedProfile);
+    }
+
+    if (!startupProfile) {
         return;
     }
 
-    await config.update(
-        'selectedProfile',
-        startupProfile,
-        vscode.ConfigurationTarget.Global
-    );
-    ext.log(`Selected profile changed to ${startupProfile} at startup based on installed extensions`);
+    if (selectedProfile !== startupProfile) {
+        await config.update(
+            'selectedProfile',
+            startupProfile,
+            vscode.ConfigurationTarget.Global
+        );
+        ext.log(`Selected profile changed to ${startupProfile} at startup based on installed extensions`);
+    }
+
+    writeSelectedProfileState(startupProfile);
 }
 
 async function initializeRuntimeExtension(
@@ -154,7 +163,11 @@ async function syncSelectedProfileWithDetectedProject(projectType: ProjectType):
     const selectedProfile = config.get<string>('selectedProfile');
     const expectedProfile = profileValueByProjectType[projectType];
 
-    if (expectedProfile && selectedProfile !== expectedProfile) {
+    if (!expectedProfile) {
+        return;
+    }
+
+    if (selectedProfile !== expectedProfile) {
         await config.update(
             'selectedProfile',
             expectedProfile,
@@ -162,6 +175,8 @@ async function syncSelectedProfileWithDetectedProject(projectType: ProjectType):
         );
         ext.log(`Selected profile changed to ${expectedProfile} as we detected a matching project`);
     }
+
+    writeSelectedProfileState(expectedProfile);
 }
 
 /**

@@ -55,11 +55,13 @@ import {
     DefaultOrgNameResponse,
     SampleItem,
     BIRuntimeStatusResponse,
-    EXTENSION_DEPENDENCIES
+    EXTENSION_DEPENDENCIES,
+    type SelectedProfileValue
 } from "@wso2/wi-core";
 import { commands, extensions, window, workspace, MarkdownString, Uri, env, ConfigurationTarget } from "vscode";
 import { getActiveBallerinaExtension } from "../../utils/ballerinaExtension";
 import { getDefaultCreationPath } from "../../utils/pathUtils";
+import { writeSelectedProfileState } from "../../utils/profileState";
 import { askFileOrFolderPath, askFilePath, askProjectPath, BALLERINA_INTEGRATOR_ISSUES_URL, getPlatform, getUsername, handleOpenSamples, isSupportedSLVersionUtil, openInVSCode, sanitizeName, validateProjectPath } from "./utils";
 import * as fs from "fs";
 import * as path from "path";
@@ -279,6 +281,10 @@ export class MainWsManager implements WIVisualizerAPI {
                 : ConfigurationTarget.Global;
 
         await workspace.getConfiguration().update(params.section, params.value, target);
+
+        if (params.section === "integrator.selectedProfile" && typeof params.value === "string") {
+            writeSelectedProfileState(params.value as SelectedProfileValue);
+        }
     }
 
     async getSupportedMIVersionsHigherThan(version: string): Promise<GetSupportedMIVersionsResponse> {
