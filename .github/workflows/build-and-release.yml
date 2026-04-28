@@ -452,37 +452,37 @@ jobs:
             installers/mac/*.dmg
           if-no-files-found: error
 
-      # - name: cosign-installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   uses: sigstore/cosign-installer@v3.5.0
-      # - name: Sign the dmg installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   run: |
-      #     cd ../..
-      #     cosign sign-blob installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg --output-certificate installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.pem --output-signature installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sig --yes
-      #
-      # - name: Verify signature of the dmg installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   run: |
-      #     cd ../..
-      #     cosign verify-blob installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg --certificate installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.pem --signature installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sig --certificate-identity=https://github.com/wso2/product-integrator/.github/workflows/build-and-release.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-      #
-      # - name: Generate Hashes for dmg installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   run: |
-      #     cd ../..
-      #     openssl dgst -sha256 -out installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sha256 installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg
-      #
-      # - name: Upload Signatures and Hashes for mac installers
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: Signatures-and-Hashes-MAC
-      #     path: |
-      #       installers/mac/*.pem
-      #       installers/mac/*.sig
-      #       installers/mac/*.sha256
-      #     if-no-files-found: error
+      - name: cosign-installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        uses: sigstore/cosign-installer@v3.5.0
+      - name: Sign the dmg installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        run: |
+          cd ../..
+          cosign sign-blob installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg --output-certificate installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.pem --output-signature installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sig --yes
+
+      - name: Verify signature of the dmg installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        run: |
+          cd ../..
+          cosign verify-blob installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg --certificate installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.pem --signature installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sig --certificate-identity=https://github.com/wso2-enterprise/support-product-integrator/.github/workflows/build-and-release.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+      - name: Generate Hashes for dmg installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        run: |
+          cd ../..
+          openssl dgst -sha256 -out installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sha256 installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg
+
+      - name: Upload Signatures and Hashes for mac installers
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MAC
+          path: |
+            installers/mac/*.pem
+            installers/mac/*.sig
+            installers/mac/*.sha256
+          if-no-files-found: error
 
   build-windows:
     if: ${{ github.event.inputs.build_windows == 'true' }}
@@ -827,36 +827,36 @@ jobs:
             installers\windows\WixPackage\bin\x64\Release\en-US\*.msi
           if-no-files-found: error
       #
-      # - name: cosign-installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   uses: sigstore/cosign-installer@v3.5.0
-      # - name: Sign the msi installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   run: |
-      #     cd ../..
-      #     cosign sign-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --output-certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --output-signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --yes
-      # - name: Verify signature of the msi installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   run: |
-      #     cd ../..
-      #     cosign verify-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --certificate-identity=https://github.com/wso2/product-integrator/.github/workflows/build-and-release.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-      #
-      # - name: Generate Hashes for msi installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   run: |
-      #     cd ../..
-      #     openssl dgst -sha256 -out installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sha256 installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi 
-      #
-      # - name: Upload Signatures and Hashes for msi installer
-      #   if: ${{ github.event.inputs.build_packed_installers == 'true' }}
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: Signatures-and-Hashes-MSI
-      #     path: |
-      #       installers\windows\*.pem
-      #       installers\windows\*.sig
-      #       installers\windows\*.sha256
-      #     if-no-files-found: error
+      - name: cosign-installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        uses: sigstore/cosign-installer@v3.5.0
+      - name: Sign the msi installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        run: |
+          cd ../..
+          cosign sign-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --output-certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --output-signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --yes
+      - name: Verify signature of the msi installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        run: |
+          cd ../..
+          cosign verify-blob installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi --certificate installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.pem --signature installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sig --certificate-identity=https://github.com/wso2-enterprise/support-product-integrator/.github/workflows/build-and-release.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+      - name: Generate Hashes for msi installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        run: |
+          cd ../..
+          openssl dgst -sha256 -out installers\windows\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi.sha256 installers\windows\WixPackage\bin\x64\Release\en-US\wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}.msi 
+
+      - name: Upload Signatures and Hashes for msi installer
+        if: ${{ github.event.inputs.build_packed_installers == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MSI
+          path: |
+            installers\windows\*.pem
+            installers\windows\*.sig
+            installers\windows\*.sha256
+          if-no-files-found: error
 
   create-release:
     name: Create Release
