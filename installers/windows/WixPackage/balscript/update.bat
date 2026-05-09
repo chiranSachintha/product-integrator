@@ -79,6 +79,7 @@ goto :eof
 :ballerina
 if /I "%FIRST_ARG%"=="-h" goto ballerina_help
 if /I "%FIRST_ARG%"=="--help" goto ballerina_help
+if /I "%FIRST_ARG%"=="help" goto ballerina_help
 if defined FIRST_ARG (
     if defined REMAINING_ARGS (
         set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
@@ -88,7 +89,7 @@ if defined FIRST_ARG (
 ) else (
     set "FORWARD_ARGS="
 )
-call "%SCRIPT_DIR%bal.bat" update %FORWARD_ARGS%
+call powershell -nologo -noprofile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%wso2integratorupdate.ps1" %FORWARD_ARGS%
 exit /b %errorlevel%
 
 :ballerina_help

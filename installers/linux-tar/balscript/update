@@ -114,7 +114,7 @@ case "$COMMAND" in
             print_ballerina_help
             exit 0
         fi
-        exec "$BALLERINA_BIN_DIR/bal" update "${COMMAND_ARGS[@]}"
+        exec "$BALLERINA_BIN_DIR/wso2integratorupdate" "${COMMAND_ARGS[@]}"
         ;;
     icp)
         exec "$ICP_UPDATE_SCRIPT" "${COMMAND_ARGS[@]}"
