@@ -90,11 +90,10 @@ rm -rf "$BALLERINA_TARGET/examples"
 
 # Add custom Ballerina update assets
 print_info "Adding Ballerina update assets"
-mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/bre/lib" "$BALLERINA_TARGET/updates"
+mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/updates"
 cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
 cp "$BALLERINA_ASSETS_DIR/wso2integratorupdate" "$BALLERINA_TARGET/bin/wso2integratorupdate"
-cp "$BALLERINA_ASSETS_DIR/update-command.jar" "$BALLERINA_TARGET/bre/lib/update-command.jar"
 
 BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"
 rm -rf "$BALLERINA_UPDATES_TEMP"
