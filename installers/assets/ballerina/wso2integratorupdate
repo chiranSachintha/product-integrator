@@ -1,0 +1,168 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_SCRIPT="$SCRIPT_DIR/update_tool_setup.sh"
+
+is_numeric() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+strip_archive_extension() {
+    case "$1" in
+        *.bala) printf '%s\n' "${1%.bala}" ;;
+        *.zip) printf '%s\n' "${1%.zip}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
+get_target_directory_name() {
+    local base_name p1 p2 p3 p4 extra
+    base_name="$(strip_archive_extension "$1")"
+    IFS='.' read -r p1 p2 p3 p4 extra <<< "$base_name"
+    if [ -z "$extra" ] && [ -n "$p4" ] && \
+            is_numeric "$p1" && is_numeric "$p2" && is_numeric "$p3" && is_numeric "$p4"; then
+        printf '%s.%s.%s\n' "$p1" "$p2" "$p3"
+        return
+    fi
+    printf '%s\n' "$base_name"
+}
+
+extract_archive() {
+    local archive="$1"
+    local parent_dir target_directory_name extracted_dir temp_dir source_root
+
+    parent_dir="$(dirname "$archive")"
+    target_directory_name="$(get_target_directory_name "$(basename "$archive")")"
+    extracted_dir="$parent_dir/$target_directory_name"
+    temp_dir="$(mktemp -d "$parent_dir/.wso2update.XXXXXX")"
+
+    unzip -q "$archive" -d "$temp_dir"
+
+    source_root="$(find "$temp_dir" -mindepth 1 -maxdepth 1 -type d ! -name '__MACOSX' | head -n 1)"
+    if [ -z "$source_root" ]; then
+        source_root="$temp_dir"
+    fi
+
+    rm -rf "$extracted_dir"
+    mkdir -p "$extracted_dir"
+    rsync -a --exclude='__MACOSX' --exclude='._*' "$source_root"/ "$extracted_dir"/
+    rm -rf "$temp_dir"
+}
+
+extract_repo_archives() {
+    local repo_dir="$1"
+    local archive
+
+    [ -d "$repo_dir" ] || return 0
+
+    while IFS= read -r archive; do
+        [ -n "$archive" ] || continue
+        case "$archive" in
+            *.zip|*.bala)
+                extract_archive "$archive"
+                rm -f "$archive"
+                ;;
+        esac
+    done < <(find "$repo_dir" -type f \( -name '*.zip' -o -name '*.bala' \))
+}
+
+print_help() {
+    cat <<'EOF'
+wso2integratorupdate tool is a simple command-line tool that connects to the
+WSO2 Update service, determines which updates are new and relevant, and
+downloads them and updates the product.
+
+To find out the latest on WSO2 Update, visit https://wso2.com/updates
+
+Usage:
+  wso2integratorupdate [flags]
+  wso2integratorupdate [command]
+
+Examples:
+# Check the current version of Update tool in use on your system
+  wso2integratorupdate version
+
+# Get help on how to use the update command
+  wso2integratorupdate help check
+
+# Update the product to the latest level. You will be prompted to enter WSO2 credentials.
+  wso2integratorupdate
+  Username: user@wso2.com
+  Password for ‘user@wso2.com’: my_password
+
+# Update the product to the latest level by entering WSO2 credentials as arguments.
+  wso2integratorupdate --username user@wso2.com --password my_password
+
+# Update the product up to a given level
+  wso2integratorupdate --level 3.0.0.10
+
+# Simulate the update
+  wso2integratorupdate --dry-run
+
+Available Commands:
+  apply-hotfix  Apply an available hotfix.
+  apply-update  Apply created update zip file on to the product
+  check         Check available new levels for the product
+  completion    Generate the autocompletion script for the specified shell
+  create-docker Create Docker image of the product
+  create-update Create update zip file for the product
+  current-state Show current details of the product.
+  help          Help about any command
+  revert-hotfix Revert most recently applied hotfix.
+  version       Print the Update tool version information.
+
+Flags:
+  -b, --backup string     Specify updates backup directory
+  -c, --channel string    Channel updates should be downloaded from (default "full")
+      --continue          Merge resolved conflicts
+      --dry-run           Simulate the update
+  -h, --help              help for wso2integratorupdate
+  -l, --level string      Level in which the product should be updated to
+      --no-backup         Skip product backup
+  -p, --password string   Specify your WSO2 account password
+      --revert            Revert to the previous update level
+      --template string   Specify the template output
+  -u, --username string   Specify your WSO2 account email
+  -v, --verbose           Enable verbose mode
+
+Use "wso2integratorupdate [command] --help" for more information about a command.
+EOF
+}
+
+if [ ! -x "$SETUP_SCRIPT" ]; then
+    echo "Error: update_tool_setup.sh not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+case "${1:-}" in
+    -h|--help|help)
+        print_help
+        exit 0
+        ;;
+esac
+
+UPDATE_TOOL="$(find "$SCRIPT_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 2>/dev/null | sort -V | tail -1)"
+if [ -z "$UPDATE_TOOL" ]; then
+    (cd "$SCRIPT_DIR" && ./update_tool_setup.sh)
+    UPDATE_TOOL="$(find "$SCRIPT_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 2>/dev/null | sort -V | tail -1)"
+fi
+
+if [ -z "$UPDATE_TOOL" ]; then
+    echo "ballerina: WSO2 update tool is not available in '$SCRIPT_DIR'."
+    echo "Run '$SETUP_SCRIPT' first."
+    exit 1
+fi
+
+"$UPDATE_TOOL" "$@"
+exit_code=$?
+
+if [ "$exit_code" -eq 0 ]; then
+    extract_repo_archives "$SCRIPT_DIR/../repo"
+fi
+
+exit "$exit_code"

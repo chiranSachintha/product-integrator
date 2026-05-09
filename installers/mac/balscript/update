@@ -122,7 +122,7 @@ EOF
                 exit 0
                 ;;
         esac
-        exec "$BALLERINA_BIN_DIR/bal" update "${COMMAND_ARGS[@]}"
+        exec "$BALLERINA_BIN_DIR/wso2integratorupdate" "${COMMAND_ARGS[@]}"
         ;;
     icp)
         case "${COMMAND_ARGS[0]:-}" in
