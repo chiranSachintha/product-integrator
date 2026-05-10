@@ -230,7 +230,6 @@ export class MainWsManager implements WIVisualizerAPI {
             } else {
                 const selectedDir = await askProjectPath(params.startPath);
                 if (!selectedDir || selectedDir.length === 0) {
-                    window.showErrorMessage('A folder must be selected');
                     resolve({ path: "" });
                 } else {
                     const dirPath = selectedDir[0].fsPath;
@@ -353,6 +352,7 @@ export class MainWsManager implements WIVisualizerAPI {
 
                 if (result) {
                     openInVSCode((result as CreateMiProjectResponse).filePath);
+                    resolve(result as CreateMiProjectResponse);
                 } else {
                     resolve({ filePath: '' });
                 }
