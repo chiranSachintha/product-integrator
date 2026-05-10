@@ -2,10 +2,20 @@
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
-set "ICP_UPDATE_SCRIPT=%SCRIPT_DIR%..\..\icp\bin\update_icp.bat"
 set "MI_CACHE_DIR=%USERPROFILE%\.wso2-mi\micro-integrator"
 set "SI_CACHE_DIR=%USERPROFILE%\.wso2-si\streaming-integrator"
 set "PROFILE_STATE_FILE=%USERPROFILE%\.wso2-integrator\selected-profile"
+
+set "APP_ROOT=%SCRIPT_DIR%.."
+if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1" (
+    set "APP_ROOT=%SCRIPT_DIR%..\.."
+)
+if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1" (
+    set "APP_ROOT=%SCRIPT_DIR%..\..\.."
+)
+
+set "BALLERINA_UPDATE_SCRIPT=%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1"
+set "ICP_UPDATE_SCRIPT=%APP_ROOT%\components\icp\bin\update_icp.bat"
 
 if /I "%~1"=="-h" goto top_help
 if /I "%~1"=="--help" goto top_help
@@ -89,7 +99,7 @@ if defined FIRST_ARG (
 ) else (
     set "FORWARD_ARGS="
 )
-call powershell -nologo -noprofile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%wso2integratorupdate.ps1" %FORWARD_ARGS%
+call powershell -nologo -noprofile -ExecutionPolicy Bypass -File "%BALLERINA_UPDATE_SCRIPT%" %FORWARD_ARGS%
 exit /b %errorlevel%
 
 :ballerina_help

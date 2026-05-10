@@ -59,7 +59,7 @@ if errorlevel 1 (
 
 REM Add custom Ballerina update assets
 echo Adding Ballerina update assets
-powershell -nologo -noprofile -command "& { $ErrorActionPreference = 'Stop'; Add-Type -A 'System.IO.Compression.FileSystem'; $assetsDir = '%BALLERINA_ASSETS_DIR%'; $ballerinaTarget = '.\WixPackage\payload\Integrator\components\ballerina'; $binTarget = Join-Path $ballerinaTarget 'bin'; $updatesTarget = Join-Path $ballerinaTarget 'updates'; $updatesExtractDir = 'C:\tmp_bal_updates'; New-Item -ItemType Directory -Force -Path $binTarget, $updatesTarget | Out-Null; Copy-Item -Force (Join-Path $assetsDir 'LICENSE') (Join-Path $ballerinaTarget 'LICENSE'); Copy-Item -Force (Join-Path $assetsDir 'update_tool_setup.ps1') (Join-Path $binTarget 'update_tool_setup.ps1'); Copy-Item -Force (Join-Path $assetsDir 'wso2integratorupdate.ps1') (Join-Path $binTarget 'wso2integratorupdate.ps1'); Remove-Item -Recurse -Force $updatesExtractDir -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $updatesExtractDir | Out-Null; [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $assetsDir 'updates.zip'), $updatesExtractDir); $updatesRoot = Join-Path $updatesExtractDir 'updates'; if (Test-Path $updatesRoot) { Copy-Item -Path (Join-Path $updatesRoot '*') -Destination $updatesTarget -Recurse -Force } else { Copy-Item -Path (Join-Path $updatesExtractDir '*') -Destination $updatesTarget -Recurse -Force }; Remove-Item -Recurse -Force $updatesExtractDir }"
+powershell -nologo -noprofile -command "& { $ErrorActionPreference = 'Stop'; Add-Type -A 'System.IO.Compression.FileSystem'; $assetsDir = '%BALLERINA_ASSETS_DIR%'; $updateScript = '%~dp0WixPackage\balscript\update.bat'; $integratorTarget = '.\WixPackage\payload\Integrator'; $ballerinaTarget = Join-Path $integratorTarget 'components\ballerina'; $ballerinaBinTarget = Join-Path $ballerinaTarget 'bin'; $ballerinaUpdatesTarget = Join-Path $ballerinaTarget 'updates'; $integratorBinTarget = Join-Path $integratorTarget 'bin'; $updatesExtractDir = 'C:\tmp_bal_updates'; New-Item -ItemType Directory -Force -Path $integratorBinTarget, $ballerinaBinTarget, $ballerinaUpdatesTarget | Out-Null; Copy-Item -Force (Join-Path $assetsDir 'LICENSE') (Join-Path $ballerinaTarget 'LICENSE'); Copy-Item -Force (Join-Path $assetsDir 'update_tool_setup.ps1') (Join-Path $ballerinaBinTarget 'update_tool_setup.ps1'); Copy-Item -Force (Join-Path $assetsDir 'wso2integratorupdate.ps1') (Join-Path $ballerinaBinTarget 'wso2integratorupdate.ps1'); Copy-Item -Force $updateScript (Join-Path $integratorBinTarget 'update.bat'); Copy-Item -Force $updateScript (Join-Path $ballerinaBinTarget 'update.bat'); Remove-Item -Recurse -Force $updatesExtractDir -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $updatesExtractDir | Out-Null; [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $assetsDir 'updates.zip'), $updatesExtractDir); $updatesRoot = Join-Path $updatesExtractDir 'updates'; if (Test-Path $updatesRoot) { Copy-Item -Path (Join-Path $updatesRoot '*') -Destination $ballerinaUpdatesTarget -Recurse -Force } else { Copy-Item -Path (Join-Path $updatesExtractDir '*') -Destination $ballerinaUpdatesTarget -Recurse -Force }; Remove-Item -Recurse -Force $updatesExtractDir }"
 if errorlevel 1 (
     echo Ballerina update asset staging failed
     exit /b 1
@@ -98,21 +98,13 @@ if exist ".\WixPackage\payload\Integrator\components\icp\bin\icp.bat" (
 
 REM Copy balscript/bal to ballerina bin directory and replace version placeholder
 set "BAL_SRC=%~dp0WixPackage\balscript\bal.bat"
-set "UPDATE_SRC=%~dp0WixPackage\balscript\update.bat"
 set "BAL_TARGET=.\WixPackage\payload\Integrator\components\ballerina\bin\bal.bat"
-set "UPDATE_TARGET=.\WixPackage\payload\Integrator\components\ballerina\bin\update.bat"
 if exist "%BAL_SRC%" (
     if not exist ".\WixPackage\payload\Integrator\components\ballerina\bin" mkdir ".\WixPackage\payload\Integrator\components\ballerina\bin"
     powershell -nologo -noprofile -command "& { (Get-Content '%BAL_SRC%') -replace '@BALLERINA_VERSION@', '%~2' | Set-Content '%BAL_TARGET%' }"
     echo Copied bal.bat to ballerina bin directory with version %~2
 ) else (
     echo bal.bat not found at %BAL_SRC%
-)
-if exist "%UPDATE_SRC%" (
-    copy /Y "%UPDATE_SRC%" "%UPDATE_TARGET%" >nul
-    echo Copied update.bat to ballerina bin directory
-) else (
-    echo update.bat not found at %UPDATE_SRC%
 )
 
 REM Copy update_icp.bat to ICP bin directory
