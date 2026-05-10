@@ -107,19 +107,6 @@ if exist "%BAL_SRC%" (
     echo bal.bat not found at %BAL_SRC%
 )
 
-REM Copy update_icp.bat to ICP bin directory
-set "UPDATE_ICP_SRC=%~dp0WixPackage\balscript\update_icp.bat"
-set "UPDATE_ICP_TARGET=.\WixPackage\payload\Integrator\components\icp\bin\update_icp.bat"
-if exist "%UPDATE_ICP_SRC%" (
-    if not exist ".\WixPackage\payload\Integrator\components\icp\bin" mkdir ".\WixPackage\payload\Integrator\components\icp\bin"
-    copy /Y "%UPDATE_ICP_SRC%" "%UPDATE_ICP_TARGET%" >nul
-    echo Copied update_icp.bat to ICP bin directory
-) else (
-    echo update_icp.bat not found at %UPDATE_ICP_SRC%
-)
-
-
-
 REM Extract numeric-only version for WiX ProductVersion (strip pre-release suffix like -m1, -beta1)
 for /f "delims=" %%v in ('powershell -nologo -noprofile -command "('%~6' -split '-')[0]"') do set "WIX_VERSION=%%v"
 

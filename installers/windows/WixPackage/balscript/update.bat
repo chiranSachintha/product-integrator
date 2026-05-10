@@ -15,7 +15,7 @@ if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1" (
 )
 
 set "BALLERINA_UPDATE_SCRIPT=%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1"
-set "ICP_UPDATE_SCRIPT=%APP_ROOT%\components\icp\bin\update_icp.bat"
+set "ICP_BIN_DIR=%APP_ROOT%\components\icp\bin"
 
 if /I "%~1"=="-h" goto top_help
 if /I "%~1"=="--help" goto top_help
@@ -148,6 +148,10 @@ echo   -v, --verbose           Enable verbose mode
 exit /b 0
 
 :icp
+if /I "%FIRST_ARG%"=="-h" goto icp_help
+if /I "%FIRST_ARG%"=="--help" goto icp_help
+if /I "%FIRST_ARG%"=="help" goto icp_help
+
 if defined FIRST_ARG (
     if defined REMAINING_ARGS (
         set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
@@ -157,7 +161,87 @@ if defined FIRST_ARG (
 ) else (
     set "FORWARD_ARGS="
 )
-call "%ICP_UPDATE_SCRIPT%" %FORWARD_ARGS%
+
+set "ICP_UPDATE_TOOL="
+for /f "delims=" %%F in ('dir /b /a-d /on "%ICP_BIN_DIR%\wso2update_*.exe" 2^>nul') do (
+    set "ICP_UPDATE_TOOL=%ICP_BIN_DIR%\%%F"
+    goto icp_found
+)
+
+:icp_found
+if not defined ICP_UPDATE_TOOL (
+    if not exist "%ICP_BIN_DIR%\update_tool_setup.ps1" (
+        echo Error: update_tool_setup.ps1 not found in "%ICP_BIN_DIR%"
+        exit /b 1
+    )
+
+    pushd "%ICP_BIN_DIR%"
+    powershell -nologo -noprofile -ExecutionPolicy Bypass -File ".\update_tool_setup.ps1"
+    if errorlevel 1 (
+        popd
+        exit /b 1
+    )
+    popd
+
+    for /f "delims=" %%F in ('dir /b /a-d /on "%ICP_BIN_DIR%\wso2update_*.exe" 2^>nul') do (
+        set "ICP_UPDATE_TOOL=%ICP_BIN_DIR%\%%F"
+        goto icp_found_after_setup
+    )
+)
+
+:icp_found_after_setup
+if not defined ICP_UPDATE_TOOL (
+    echo Error: ICP update executable not found in "%ICP_BIN_DIR%"
+    exit /b 1
+)
+
+call "%ICP_UPDATE_TOOL%" %FORWARD_ARGS%
+exit /b %errorlevel%
+
+:icp_help
+echo Update ICP connects to the WSO2 Update service, finds product updates that are
+echo relevant to the installed WSO2 Integration Control Plane, and applies them.
+echo(
+echo To learn more about WSO2 Update, visit https://wso2.com/updates
+echo(
+echo Usage:
+echo   update icp [flags]
+echo   update icp [command]
+echo(
+echo Examples:
+echo   update icp version
+echo   update icp help check
+echo   update icp
+echo   update icp --username user@wso2.com --password my_password
+echo   update icp --level 3.0.0.10
+echo   update icp --dry-run
+echo(
+echo Available Commands:
+echo   apply-hotfix   Apply an available hotfix.
+echo   apply-update   Apply a created update zip file to the product.
+echo   check          Check available new levels for the product.
+echo   completion     Generate shell autocompletion scripts.
+echo   create-docker  Create a Docker image of the product.
+echo   create-update  Create an update zip file for the product.
+echo   current-state  Show current details of the product.
+echo   help           Help about any command.
+echo   revert-hotfix  Revert the most recently applied hotfix.
+echo   version        Print the update tool version information.
+echo(
+echo Flags:
+echo   -b, --backup string     Specify updates backup directory
+echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
+echo       --continue          Merge resolved conflicts
+echo       --dry-run           Simulate the update
+echo   -h, --help              help for update icp
+echo   -l, --level string      Level in which the product should be updated to
+echo       --no-backup         Skip product backup
+echo   -p, --password string   Specify your WSO2 account password
+echo       --revert            Revert to the previous update level
+echo       --template string   Specify the template output
+echo   -u, --username string   Specify your WSO2 account email
+echo   -v, --verbose           Enable verbose mode
+exit /b 0
 exit /b %errorlevel%
 
 :mi
