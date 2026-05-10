@@ -131,11 +131,11 @@ fi
 
 # Add custom Ballerina update assets
 print_info "Adding Ballerina update assets"
-mkdir -p "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/updates"
+mkdir -p "$INTEGRATOR_TARGET/bin" "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/updates"
 cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
 cp "$BALLERINA_ASSETS_DIR/wso2integratorupdate" "$BALLERINA_TARGET/bin/wso2integratorupdate"
-cp "$WORK_DIR/balscript/update" "$BALLERINA_TARGET/bin/update"
+cp "$WORK_DIR/balscript/update" "$INTEGRATOR_TARGET/bin/update"
 
 BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"
 rm -rf "$BALLERINA_UPDATES_TEMP"
@@ -170,7 +170,6 @@ print_info "Adding ICP update assets"
 mkdir -p "$ICP_TARGET/bin" "$ICP_TARGET/updates"
 cp "$ICP_ASSETS_DIR/LICENSE" "$ICP_TARGET/LICENSE"
 cp "$ICP_ASSETS_DIR/update_tool_setup.sh" "$ICP_TARGET/bin/update_tool_setup.sh"
-cp "$WORK_DIR/balscript/update_icp" "$ICP_TARGET/bin/update_icp"
 ICP_UPDATES_TEMP="$WORK_DIR/icp_updates_temp"
 rm -rf "$ICP_UPDATES_TEMP"
 mkdir -p "$ICP_UPDATES_TEMP"
@@ -181,8 +180,6 @@ else
     cp -R "$ICP_UPDATES_TEMP/." "$ICP_TARGET/updates/"
 fi
 rm -rf "$ICP_UPDATES_TEMP"
-
-chmod +x "$ICP_TARGET/bin"/*
 
 # Modify icp.sh to use the JRE from shared dependencies directory
 ICP_SCRIPT="$ICP_TARGET/bin/icp.sh"

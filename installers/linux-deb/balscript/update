@@ -3,8 +3,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BALLERINA_BIN_DIR="$SCRIPT_DIR"
-ICP_UPDATE_SCRIPT="$SCRIPT_DIR/../../icp/bin/update_icp"
+APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BALLERINA_UPDATE="$APP_ROOT/components/ballerina/bin/wso2integratorupdate"
+ICP_BIN_DIR="$APP_ROOT/components/icp/bin"
 MI_CACHE_DIR="$HOME/.wso2-mi/micro-integrator"
 SI_CACHE_DIR="$HOME/.wso2-si/streaming-integrator"
 PROFILE_STATE_FILE="$HOME/.wso2-integrator/selected-profile"
@@ -54,6 +55,80 @@ Flags:
   -u, --username string   Specify your WSO2 account email
   -v, --verbose           Enable verbose mode
 EOF
+}
+
+print_icp_help() {
+    cat <<'EOF'
+Update ICP connects to the WSO2 Update service, finds product updates that are
+relevant to the installed WSO2 Integration Control Plane, and applies them.
+
+To learn more about WSO2 Update, visit https://wso2.com/updates
+
+Usage:
+  update icp [flags]
+  update icp [command]
+
+Examples:
+  update icp version
+  update icp help check
+  update icp
+  update icp --username user@wso2.com --password my_password
+  update icp --level 3.0.0.10
+  update icp --dry-run
+
+Available Commands:
+  apply-hotfix   Apply an available hotfix.
+  apply-update   Apply a created update zip file to the product.
+  check          Check available new levels for the product.
+  completion     Generate shell autocompletion scripts.
+  create-docker  Create a Docker image of the product.
+  create-update  Create an update zip file for the product.
+  current-state  Show current details of the product.
+  help           Help about any command.
+  revert-hotfix  Revert the most recently applied hotfix.
+  version        Print the update tool version information.
+
+Flags:
+  -b, --backup string     Specify updates backup directory
+  -c, --channel string    Channel updates should be downloaded from (default "full")
+      --continue          Merge resolved conflicts
+      --dry-run           Simulate the update
+  -h, --help              help for update icp
+  -l, --level string      Level in which the product should be updated to
+      --no-backup         Skip product backup
+  -p, --password string   Specify your WSO2 account password
+      --revert            Revert to the previous update level
+      --template string   Specify the template output
+  -u, --username string   Specify your WSO2 account email
+  -v, --verbose           Enable verbose mode
+EOF
+}
+
+run_icp_update() {
+    if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "help" ]; then
+        print_icp_help
+        exit 0
+    fi
+
+    local icp_update_tool
+    icp_update_tool="$(find "$ICP_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 | head -1)"
+
+    if [ -z "$icp_update_tool" ] || [ ! -x "$icp_update_tool" ]; then
+        if [ ! -x "$ICP_BIN_DIR/update_tool_setup.sh" ]; then
+            echo "Error: update_tool_setup.sh not found in $ICP_BIN_DIR"
+            exit 1
+        fi
+
+        (cd "$ICP_BIN_DIR" && ./update_tool_setup.sh)
+        icp_update_tool="$(find "$ICP_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 | head -1)"
+    fi
+
+    if [ -z "$icp_update_tool" ] || [ ! -x "$icp_update_tool" ]; then
+        echo "Error: ICP update executable not found in $ICP_BIN_DIR"
+        exit 1
+    fi
+
+    exec "$icp_update_tool" "$@"
 }
 
 if [ "$#" -lt 1 ]; then
@@ -114,10 +189,10 @@ case "$COMMAND" in
             print_ballerina_help
             exit 0
         fi
-        exec "$BALLERINA_BIN_DIR/wso2integratorupdate" "${COMMAND_ARGS[@]}"
+        exec "$BALLERINA_UPDATE" "${COMMAND_ARGS[@]}"
         ;;
     icp)
-        exec "$ICP_UPDATE_SCRIPT" "${COMMAND_ARGS[@]}"
+        run_icp_update "${COMMAND_ARGS[@]}"
         ;;
     mi)
         case "${COMMAND_ARGS[0]:-}" in
