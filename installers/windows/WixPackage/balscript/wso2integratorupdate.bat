@@ -76,6 +76,43 @@ echo(
 echo The default command is selected from the active Integration Profile.
 exit /b 0
 
+:is_valid_update_invocation
+set "VALID_UPDATE_INVOCATION="
+if "%FIRST_ARG%"=="" (
+    set "VALID_UPDATE_INVOCATION=1"
+    goto :eof
+)
+
+if /I "%FIRST_ARG%"=="-h" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--help" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="help" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="version" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="current-state" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="check" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="completion" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="apply-hotfix" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="apply-update" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="create-docker" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="create-update" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="revert-hotfix" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--username" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="-u" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--password" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="-p" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--level" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="-l" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--backup" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="-b" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--channel" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="-c" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--continue" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--dry-run" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--no-backup" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--revert" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--template" set "VALID_UPDATE_INVOCATION=1"
+if /I "%FIRST_ARG%"=="--verbose" set "VALID_UPDATE_INVOCATION=1"
+goto :eof
+
 :guard_if_running
 set "GUARD_PRODUCT=%~1"
 call :is_safe_subcommand
@@ -106,8 +143,14 @@ goto :eof
 set "BANNER_PRODUCT=%~1"
 echo.
 echo WSO2 Integrator is running.
-echo Please close the app and run:
-echo   "%APP_ROOT%\bin\wso2integratorupdate.bat" %BANNER_PRODUCT%
+echo Please close the app and run this in a terminal to update:
+if defined REMAINING_ARGS (
+    echo   wso2integratorupdate %BANNER_PRODUCT% %FIRST_ARG% %REMAINING_ARGS%
+) else if defined FIRST_ARG (
+    echo   wso2integratorupdate %BANNER_PRODUCT% %FIRST_ARG%
+) else (
+    echo   wso2integratorupdate %BANNER_PRODUCT%
+)
 echo.
 exit /b 1
 
@@ -125,6 +168,8 @@ goto :eof
 if /I "%FIRST_ARG%"=="-h" goto ballerina_help
 if /I "%FIRST_ARG%"=="--help" goto ballerina_help
 if /I "%FIRST_ARG%"=="help" goto ballerina_help
+call :is_valid_update_invocation
+if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 call :guard_if_running ballerina
 if errorlevel 1 exit /b 1
 if defined FIRST_ARG (
@@ -184,10 +229,28 @@ echo   -u, --username string   Specify your WSO2 account email
 echo   -v, --verbose           Enable verbose mode
 exit /b 0
 
+:invalid_update_invocation
+if defined FIRST_ARG (
+    if "!FIRST_ARG:~0,1!"=="-" (
+        echo Unknown option: %FIRST_ARG%
+    ) else (
+        echo Unknown command: %FIRST_ARG%
+    )
+) else (
+    echo Unknown command.
+)
+echo(
+echo Usage:
+echo   wso2integratorupdate ballerina [flags]
+echo   wso2integratorupdate ballerina [command]
+exit /b 1
+
 :icp
 if /I "%FIRST_ARG%"=="-h" goto icp_help
 if /I "%FIRST_ARG%"=="--help" goto icp_help
 if /I "%FIRST_ARG%"=="help" goto icp_help
+call :is_valid_update_invocation
+if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 call :guard_if_running icp
 if errorlevel 1 exit /b 1
 
@@ -287,6 +350,8 @@ exit /b %errorlevel%
 if /I "%FIRST_ARG%"=="-h" goto mi_help
 if /I "%FIRST_ARG%"=="--help" goto mi_help
 if /I "%FIRST_ARG%"=="help" goto mi_help
+call :is_valid_update_invocation
+if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 call :guard_if_running mi
 if errorlevel 1 exit /b 1
 
@@ -363,6 +428,8 @@ exit /b 0
 if /I "%FIRST_ARG%"=="-h" goto si_help
 if /I "%FIRST_ARG%"=="--help" goto si_help
 if /I "%FIRST_ARG%"=="help" goto si_help
+call :is_valid_update_invocation
+if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 call :guard_if_running si
 if errorlevel 1 exit /b 1
 
