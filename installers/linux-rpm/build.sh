@@ -136,7 +136,7 @@ mkdir -p "$INTEGRATOR_TARGET/bin" "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/upd
 cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
 cp "$BALLERINA_ASSETS_DIR/wso2integratorupdate_dist" "$BALLERINA_TARGET/bin/wso2integratorupdate_dist"
-cp "$WORK_DIR/balscript/update" "$INTEGRATOR_TARGET/bin/update"
+cp "$WORK_DIR/balscript/wso2integratorupdate" "$INTEGRATOR_TARGET/bin/wso2integratorupdate"
 
 BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"
 rm -rf "$BALLERINA_UPDATES_TEMP"

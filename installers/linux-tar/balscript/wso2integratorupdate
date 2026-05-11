@@ -18,16 +18,16 @@ relevant to the installed Ballerina, and applies them.
 To learn more about WSO2 Update, visit https://wso2.com/updates
 
 Usage:
-  update ballerina [flags]
-  update ballerina [command]
+  wso2integratorupdate ballerina [flags]
+  wso2integratorupdate ballerina [command]
 
 Examples:
-  update ballerina version
-  update ballerina help check
-  update ballerina
-  update ballerina --username user@wso2.com --password my_password
-  update ballerina --level 3.0.0.10
-  update ballerina --dry-run
+  wso2integratorupdate ballerina version
+  wso2integratorupdate ballerina help check
+  wso2integratorupdate ballerina
+  wso2integratorupdate ballerina --username user@wso2.com --password my_password
+  wso2integratorupdate ballerina --level 3.0.0.10
+  wso2integratorupdate ballerina --dry-run
 
 Available Commands:
   apply-hotfix   Apply an available hotfix.
@@ -46,7 +46,7 @@ Flags:
   -c, --channel string    Channel updates should be downloaded from (default "full")
       --continue          Merge resolved conflicts
       --dry-run           Simulate the update
-  -h, --help              help for update ballerina
+  -h, --help              help for wso2integratorupdate ballerina
   -l, --level string      Level in which the product should be updated to
       --no-backup         Skip product backup
   -p, --password string   Specify your WSO2 account password
@@ -65,16 +65,16 @@ relevant to the installed WSO2 Integration Control Plane, and applies them.
 To learn more about WSO2 Update, visit https://wso2.com/updates
 
 Usage:
-  update icp [flags]
-  update icp [command]
+  wso2integratorupdate icp [flags]
+  wso2integratorupdate icp [command]
 
 Examples:
-  update icp version
-  update icp help check
-  update icp
-  update icp --username user@wso2.com --password my_password
-  update icp --level 3.0.0.10
-  update icp --dry-run
+  wso2integratorupdate icp version
+  wso2integratorupdate icp help check
+  wso2integratorupdate icp
+  wso2integratorupdate icp --username user@wso2.com --password my_password
+  wso2integratorupdate icp --level 3.0.0.10
+  wso2integratorupdate icp --dry-run
 
 Available Commands:
   apply-hotfix   Apply an available hotfix.
@@ -93,7 +93,7 @@ Flags:
   -c, --channel string    Channel updates should be downloaded from (default "full")
       --continue          Merge resolved conflicts
       --dry-run           Simulate the update
-  -h, --help              help for update icp
+  -h, --help              help for wso2integratorupdate icp
   -l, --level string      Level in which the product should be updated to
       --no-backup         Skip product backup
   -p, --password string   Specify your WSO2 account password
@@ -204,16 +204,16 @@ relevant to the installed MI, and applies them.
 To learn more about WSO2 Update, visit https://wso2.com/updates
 
 Usage:
-  update mi [flags]
-  update mi [command]
+  wso2integratorupdate mi [flags]
+  wso2integratorupdate mi [command]
 
 Examples:
-  update mi version
-  update mi help check
-  update mi
-  update mi --username user@wso2.com --password my_password
-  update mi --level 3.0.0.10
-  update mi --dry-run
+  wso2integratorupdate mi version
+  wso2integratorupdate mi help check
+  wso2integratorupdate mi
+  wso2integratorupdate mi --username user@wso2.com --password my_password
+  wso2integratorupdate mi --level 3.0.0.10
+  wso2integratorupdate mi --dry-run
 
 Available Commands:
   apply-hotfix   Apply an available hotfix.
@@ -232,7 +232,7 @@ Flags:
   -c, --channel string    Channel updates should be downloaded from (default "full")
       --continue          Merge resolved conflicts
       --dry-run           Simulate the update
-  -h, --help              help for update mi
+  -h, --help              help for wso2integratorupdate mi
   -l, --level string      Level in which the product should be updated to
       --no-backup         Skip product backup
   -p, --password string   Specify your WSO2 account password
@@ -266,16 +266,16 @@ relevant to the installed SI, and applies them.
 To learn more about WSO2 Update, visit https://wso2.com/updates
 
 Usage:
-  update si [flags]
-  update si [command]
+  wso2integratorupdate si [flags]
+  wso2integratorupdate si [command]
 
 Examples:
-  update si version
-  update si help check
-  update si
-  update si --username user@wso2.com --password my_password
-  update si --level 3.0.0.10
-  update si --dry-run
+  wso2integratorupdate si version
+  wso2integratorupdate si help check
+  wso2integratorupdate si
+  wso2integratorupdate si --username user@wso2.com --password my_password
+  wso2integratorupdate si --level 3.0.0.10
+  wso2integratorupdate si --dry-run
 
 Available Commands:
   apply-hotfix   Apply an available hotfix.
@@ -294,7 +294,7 @@ Flags:
   -c, --channel string    Channel updates should be downloaded from (default "full")
       --continue          Merge resolved conflicts
       --dry-run           Simulate the update
-  -h, --help              help for update si
+  -h, --help              help for wso2integratorupdate si
   -l, --level string      Level in which the product should be updated to
       --no-backup         Skip product backup
   -p, --password string   Specify your WSO2 account password

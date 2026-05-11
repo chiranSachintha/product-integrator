@@ -65,13 +65,13 @@ if /I "%COMMAND%"=="mi" goto mi
 if /I "%COMMAND%"=="si" goto si
 
 :usage
-echo Usage: update [flags]
-echo Usage: update ^<ballerina^|icp^|mi^|si^> [args...]
+echo Usage: wso2integratorupdate [flags]
+echo Usage: wso2integratorupdate ^<ballerina^|icp^|mi^|si^> [args...]
 exit /b 1
 
 :top_help
-echo Usage: update [flags]
-echo Usage: update ^<ballerina^|icp^|mi^|si^> [args...]
+echo Usage: wso2integratorupdate [flags]
+echo Usage: wso2integratorupdate ^<ballerina^|icp^|mi^|si^> [args...]
 echo(
 echo The default command is selected from the active Integration Profile.
 exit /b 0
@@ -109,16 +109,16 @@ echo(
 echo To learn more about WSO2 Update, visit https://wso2.com/updates
 echo(
 echo Usage:
-echo   update ballerina [flags]
-echo   update ballerina [command]
+echo   wso2integratorupdate ballerina [flags]
+echo   wso2integratorupdate ballerina [command]
 echo(
 echo Examples:
-echo   update ballerina version
-echo   update ballerina help check
-echo   update ballerina
-echo   update ballerina --username user@wso2.com --password my_password
-echo   update ballerina --level 3.0.0.10
-echo   update ballerina --dry-run
+echo   wso2integratorupdate ballerina version
+echo   wso2integratorupdate ballerina help check
+echo   wso2integratorupdate ballerina
+echo   wso2integratorupdate ballerina --username user@wso2.com --password my_password
+echo   wso2integratorupdate ballerina --level 3.0.0.10
+echo   wso2integratorupdate ballerina --dry-run
 echo(
 echo Available Commands:
 echo   apply-hotfix   Apply an available hotfix.
@@ -137,7 +137,7 @@ echo   -b, --backup string     Specify updates backup directory
 echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
 echo       --continue          Merge resolved conflicts
 echo       --dry-run           Simulate the update
-echo   -h, --help              help for update ballerina
+echo   -h, --help              help for wso2integratorupdate ballerina
 echo   -l, --level string      Level in which the product should be updated to
 echo       --no-backup         Skip product backup
 echo   -p, --password string   Specify your WSO2 account password
@@ -205,16 +205,16 @@ echo(
 echo To learn more about WSO2 Update, visit https://wso2.com/updates
 echo(
 echo Usage:
-echo   update icp [flags]
-echo   update icp [command]
+echo   wso2integratorupdate icp [flags]
+echo   wso2integratorupdate icp [command]
 echo(
 echo Examples:
-echo   update icp version
-echo   update icp help check
-echo   update icp
-echo   update icp --username user@wso2.com --password my_password
-echo   update icp --level 3.0.0.10
-echo   update icp --dry-run
+echo   wso2integratorupdate icp version
+echo   wso2integratorupdate icp help check
+echo   wso2integratorupdate icp
+echo   wso2integratorupdate icp --username user@wso2.com --password my_password
+echo   wso2integratorupdate icp --level 3.0.0.10
+echo   wso2integratorupdate icp --dry-run
 echo(
 echo Available Commands:
 echo   apply-hotfix   Apply an available hotfix.
@@ -233,7 +233,7 @@ echo   -b, --backup string     Specify updates backup directory
 echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
 echo       --continue          Merge resolved conflicts
 echo       --dry-run           Simulate the update
-echo   -h, --help              help for update icp
+echo   -h, --help              help for wso2integratorupdate icp
 echo   -l, --level string      Level in which the product should be updated to
 echo       --no-backup         Skip product backup
 echo   -p, --password string   Specify your WSO2 account password
@@ -280,16 +280,16 @@ echo(
 echo To learn more about WSO2 Update, visit https://wso2.com/updates
 echo(
 echo Usage:
-echo   update mi [flags]
-echo   update mi [command]
+echo   wso2integratorupdate mi [flags]
+echo   wso2integratorupdate mi [command]
 echo(
 echo Examples:
-echo   update mi version
-echo   update mi help check
-echo   update mi
-echo   update mi --username user@wso2.com --password my_password
-echo   update mi --level 3.0.0.10
-echo   update mi --dry-run
+echo   wso2integratorupdate mi version
+echo   wso2integratorupdate mi help check
+echo   wso2integratorupdate mi
+echo   wso2integratorupdate mi --username user@wso2.com --password my_password
+echo   wso2integratorupdate mi --level 3.0.0.10
+echo   wso2integratorupdate mi --dry-run
 echo(
 echo Available Commands:
 echo   apply-hotfix   Apply an available hotfix.
@@ -308,7 +308,7 @@ echo   -b, --backup string     Specify updates backup directory
 echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
 echo       --continue          Merge resolved conflicts
 echo       --dry-run           Simulate the update
-echo   -h, --help              help for update mi
+echo   -h, --help              help for wso2integratorupdate mi
 echo   -l, --level string      Level in which the product should be updated to
 echo       --no-backup         Skip product backup
 echo   -p, --password string   Specify your WSO2 account password
@@ -354,16 +354,16 @@ echo(
 echo To learn more about WSO2 Update, visit https://wso2.com/updates
 echo(
 echo Usage:
-echo   update si [flags]
-echo   update si [command]
+echo   wso2integratorupdate si [flags]
+echo   wso2integratorupdate si [command]
 echo(
 echo Examples:
-echo   update si version
-echo   update si help check
-echo   update si
-echo   update si --username user@wso2.com --password my_password
-echo   update si --level 3.0.0.10
-echo   update si --dry-run
+echo   wso2integratorupdate si version
+echo   wso2integratorupdate si help check
+echo   wso2integratorupdate si
+echo   wso2integratorupdate si --username user@wso2.com --password my_password
+echo   wso2integratorupdate si --level 3.0.0.10
+echo   wso2integratorupdate si --dry-run
 echo(
 echo Available Commands:
 echo   apply-hotfix   Apply an available hotfix.
@@ -382,7 +382,7 @@ echo   -b, --backup string     Specify updates backup directory
 echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
 echo       --continue          Merge resolved conflicts
 echo       --dry-run           Simulate the update
-echo   -h, --help              help for update si
+echo   -h, --help              help for wso2integratorupdate si
 echo   -l, --level string      Level in which the product should be updated to
 echo       --no-backup         Skip product backup
 echo   -p, --password string   Specify your WSO2 account password
