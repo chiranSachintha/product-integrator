@@ -76,6 +76,41 @@ echo(
 echo The default command is selected from the active Integration Profile.
 exit /b 0
 
+:guard_if_running
+set "GUARD_PRODUCT=%~1"
+call :is_safe_subcommand
+if defined SAFE_SUBCOMMAND exit /b 0
+call :is_integrator_running
+if not defined INTEGRATOR_RUNNING exit /b 0
+call :show_close_banner "%GUARD_PRODUCT%"
+exit /b 1
+
+:is_safe_subcommand
+set "SAFE_SUBCOMMAND="
+if /I "%FIRST_ARG%"=="-h" set "SAFE_SUBCOMMAND=1"
+if /I "%FIRST_ARG%"=="--help" set "SAFE_SUBCOMMAND=1"
+if /I "%FIRST_ARG%"=="help" set "SAFE_SUBCOMMAND=1"
+if /I "%FIRST_ARG%"=="version" set "SAFE_SUBCOMMAND=1"
+if /I "%FIRST_ARG%"=="current-state" set "SAFE_SUBCOMMAND=1"
+if /I "%FIRST_ARG%"=="check" set "SAFE_SUBCOMMAND=1"
+if /I "%FIRST_ARG%"=="completion" set "SAFE_SUBCOMMAND=1"
+goto :eof
+
+:is_integrator_running
+set "INTEGRATOR_RUNNING="
+tasklist /FI "IMAGENAME eq WSO2 Integrator.exe" /NH 2>nul | find /I "WSO2 Integrator.exe" >nul
+if not errorlevel 1 set "INTEGRATOR_RUNNING=1"
+goto :eof
+
+:show_close_banner
+set "BANNER_PRODUCT=%~1"
+echo.
+echo WSO2 Integrator is running.
+echo Please close the app and run:
+echo   "%APP_ROOT%\bin\wso2integratorupdate.bat" %BANNER_PRODUCT%
+echo.
+exit /b 1
+
 :resolve_profile_command
 set "RESOLVED_COMMAND=ballerina"
 if exist "%PROFILE_STATE_FILE%" (
@@ -90,6 +125,8 @@ goto :eof
 if /I "%FIRST_ARG%"=="-h" goto ballerina_help
 if /I "%FIRST_ARG%"=="--help" goto ballerina_help
 if /I "%FIRST_ARG%"=="help" goto ballerina_help
+call :guard_if_running ballerina
+if errorlevel 1 exit /b 1
 if defined FIRST_ARG (
     if defined REMAINING_ARGS (
         set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
@@ -151,6 +188,8 @@ exit /b 0
 if /I "%FIRST_ARG%"=="-h" goto icp_help
 if /I "%FIRST_ARG%"=="--help" goto icp_help
 if /I "%FIRST_ARG%"=="help" goto icp_help
+call :guard_if_running icp
+if errorlevel 1 exit /b 1
 
 if defined FIRST_ARG (
     if defined REMAINING_ARGS (
@@ -248,6 +287,8 @@ exit /b %errorlevel%
 if /I "%FIRST_ARG%"=="-h" goto mi_help
 if /I "%FIRST_ARG%"=="--help" goto mi_help
 if /I "%FIRST_ARG%"=="help" goto mi_help
+call :guard_if_running mi
+if errorlevel 1 exit /b 1
 
 set "MI_UPDATE_TOOL="
 for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
@@ -322,6 +363,8 @@ exit /b 0
 if /I "%FIRST_ARG%"=="-h" goto si_help
 if /I "%FIRST_ARG%"=="--help" goto si_help
 if /I "%FIRST_ARG%"=="help" goto si_help
+call :guard_if_running si
+if errorlevel 1 exit /b 1
 
 set "SI_UPDATE_TOOL="
 for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
