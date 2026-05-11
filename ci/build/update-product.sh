@@ -191,12 +191,12 @@ fi)
       "linux": {
         "BALLERINA_HOME": "\${APP_ROOT}/components/ballerina",
         "WSO2_INTEGRATOR_BALLERINA_HOME": "\${APP_ROOT}/components/ballerina",
-        "PATH": "\${APP_ROOT}/components/ballerina/bin"
+        "PATH": "\${APP_ROOT}/bin:\${APP_ROOT}/components/ballerina/bin"
       },
       "win32": {
         "BALLERINA_HOME": "\${APP_ROOT}\\\\components\\\\ballerina",
         "WSO2_INTEGRATOR_BALLERINA_HOME": "\${APP_ROOT}\\\\components\\\\ballerina",
-        "PATH": "\${APP_ROOT}\\\\components\\\\ballerina\\\\bin"
+        "PATH": "\${APP_ROOT}\\\\bin;\${APP_ROOT}\\\\components\\\\ballerina\\\\bin"
       }
     }
 }
