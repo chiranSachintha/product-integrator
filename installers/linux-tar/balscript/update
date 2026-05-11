@@ -4,7 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BALLERINA_UPDATE="$APP_ROOT/components/ballerina/bin/wso2integratorupdate"
+BALLERINA_UPDATE="$APP_ROOT/components/ballerina/bin/wso2integratorupdate_dist"
 ICP_BIN_DIR="$APP_ROOT/components/icp/bin"
 MI_CACHE_DIR="$HOME/.wso2-mi/micro-integrator"
 SI_CACHE_DIR="$HOME/.wso2-si/streaming-integrator"

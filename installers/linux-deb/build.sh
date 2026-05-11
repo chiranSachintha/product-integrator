@@ -126,7 +126,7 @@ print_info "Adding Ballerina update assets"
 mkdir -p "$INTEGRATOR_TARGET/bin" "$BALLERINA_TARGET/bin" "$BALLERINA_TARGET/updates"
 cp "$BALLERINA_ASSETS_DIR/LICENSE" "$BALLERINA_TARGET/LICENSE"
 cp "$BALLERINA_ASSETS_DIR/update_tool_setup.sh" "$BALLERINA_TARGET/bin/update_tool_setup.sh"
-cp "$BALLERINA_ASSETS_DIR/wso2integratorupdate" "$BALLERINA_TARGET/bin/wso2integratorupdate"
+cp "$BALLERINA_ASSETS_DIR/wso2integratorupdate_dist" "$BALLERINA_TARGET/bin/wso2integratorupdate_dist"
 cp "$WORK_DIR/balscript/update" "$INTEGRATOR_TARGET/bin/update"
 
 BALLERINA_UPDATES_TEMP="$WORK_DIR/ballerina_updates_temp"

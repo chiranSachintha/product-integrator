@@ -7,14 +7,14 @@ set "SI_CACHE_DIR=%USERPROFILE%\.wso2-si\streaming-integrator"
 set "PROFILE_STATE_FILE=%USERPROFILE%\.wso2-integrator\selected-profile"
 
 set "APP_ROOT=%SCRIPT_DIR%.."
-if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1" (
+if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate_dist.ps1" (
     set "APP_ROOT=%SCRIPT_DIR%..\.."
 )
-if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1" (
+if not exist "%APP_ROOT%\components\ballerina\bin\wso2integratorupdate_dist.ps1" (
     set "APP_ROOT=%SCRIPT_DIR%..\..\.."
 )
 
-set "BALLERINA_UPDATE_SCRIPT=%APP_ROOT%\components\ballerina\bin\wso2integratorupdate.ps1"
+set "BALLERINA_UPDATE_SCRIPT=%APP_ROOT%\components\ballerina\bin\wso2integratorupdate_dist.ps1"
 set "ICP_BIN_DIR=%APP_ROOT%\components\icp\bin"
 
 if /I "%~1"=="-h" goto top_help
