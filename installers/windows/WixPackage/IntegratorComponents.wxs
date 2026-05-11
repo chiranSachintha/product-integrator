@@ -47,7 +47,7 @@
       Guid="{7b3e4d44-1a1d-4f58-bd3a-2a7f4b6c1b7f}">
       <RegistryValue Root="HKCU" Key="Software\WSO2\Integrator" Name="PathInstalled"
         Type="integer" Value="1" KeyPath="yes" />
-      <util:Environment Id="IntegratorPathEnv"
+      <Environment Id="IntegratorPathEnv"
         Name="PATH"
         Action="set"
         Part="last"
