@@ -159,8 +159,48 @@ read_selected_profile_command() {
 if [ "$#" -ge 1 ]; then
     case "$1" in
         -h|--help|help)
-            echo "Usage: update [flags]"
-            echo "Usage: update <ballerina|icp|mi|si> [args...]"
+            echo "Usage: wso2integratorupdate [command] [flags]"
+            echo "Usage: wso2integratorupdate <ballerina|icp|mi|si> [command] [flags]"
+            echo
+            echo "  ballerina   Run the Ballerina update flow."
+            echo "  icp         Run the ICP update flow."
+            echo "  mi          Run the MI update flow."
+            echo "  si          Run the SI update flow."
+            echo
+            echo "The default command is selected from the active Integration Profile."
+            echo
+            echo "Examples:"
+            echo "  wso2integratorupdate check"
+            echo "  wso2integratorupdate version"
+            echo "  wso2integratorupdate help check"
+            echo "  wso2integratorupdate current-state"
+            echo "  wso2integratorupdate --revert"
+            echo
+            echo "Available Commands:"
+            echo "  apply-hotfix   Apply an available hotfix."
+            echo "  apply-update   Apply a created update zip file to the product."
+            echo "  check          Check available new levels for the product."
+            echo "  completion     Generate shell autocompletion scripts."
+            echo "  create-docker  Create a Docker image of the product."
+            echo "  create-update  Create an update zip file for the product."
+            echo "  current-state  Show current details of the product."
+            echo "  help           Help about any command."
+            echo "  revert-hotfix  Revert the most recently applied hotfix."
+            echo "  version        Print the update tool version information."
+            echo
+            echo "Flags:"
+            echo "  -b, --backup string     Specify updates backup directory"
+            echo "  -c, --channel string    Channel updates should be downloaded from (default \"full\")"
+            echo "      --continue          Merge resolved conflicts"
+            echo "      --dry-run           Simulate the update"
+            echo "  -h, --help              help for wso2integratorupdate"
+            echo "  -l, --level string      Level in which the product should be updated to"
+            echo "      --no-backup         Skip product backup"
+            echo "  -p, --password string   Specify your WSO2 account password"
+            echo "      --revert            Revert to the previous update level"
+            echo "      --template string   Specify the template output"
+            echo "  -u, --username string   Specify your WSO2 account email"
+            echo "  -v, --verbose           Enable verbose mode"
             exit 0
             ;;
         ballerina|icp|mi|si)
@@ -168,13 +208,13 @@ if [ "$#" -ge 1 ]; then
             shift
             COMMAND_ARGS=("$@")
             ;;
-        -*)
+        version|current-state|check|completion|apply-hotfix|apply-update|create-docker|create-update|revert-hotfix|--username|-u|--password|-p|--level|-l|--backup|-b|--channel|-c|--continue|--dry-run|--no-backup|--revert|--template|--verbose)
             COMMAND="$(read_selected_profile_command)"
             COMMAND_ARGS=("$@")
             ;;
         *)
-            echo "Usage: update [flags]"
-            echo "Usage: update <ballerina|icp|mi|si> [args...]"
+            echo "Usage: wso2integratorupdate [command] [flags]"
+            echo "Usage: wso2integratorupdate <ballerina|icp|mi|si> [command] [flags]"
             exit 1
             ;;
     esac

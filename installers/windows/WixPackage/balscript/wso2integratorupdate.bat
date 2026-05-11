@@ -65,15 +65,53 @@ if /I "%COMMAND%"=="mi" goto mi
 if /I "%COMMAND%"=="si" goto si
 
 :usage
-echo Usage: wso2integratorupdate [flags]
-echo Usage: wso2integratorupdate ^<ballerina^|icp^|mi^|si^> [args...]
+echo Usage: wso2integratorupdate [command] [flags]
+echo Usage: wso2integratorupdate ^<ballerina^|icp^|mi^|si^> [command] [flags]
 exit /b 1
 
 :top_help
-echo Usage: wso2integratorupdate [flags]
-echo Usage: wso2integratorupdate ^<ballerina^|icp^|mi^|si^> [args...]
+echo Usage: wso2integratorupdate [command] [flags]
+echo Usage: wso2integratorupdate ^<ballerina^|icp^|mi^|si^> [command] [flags]
+echo(
+echo   ballerina   Run the Ballerina update flow.
+echo   icp         Run the ICP update flow.
+echo   mi          Run the MI update flow.
+echo   si          Run the SI update flow.
 echo(
 echo The default command is selected from the active Integration Profile.
+echo(
+echo Examples:
+echo   wso2integratorupdate check
+echo   wso2integratorupdate version
+echo   wso2integratorupdate help check
+echo   wso2integratorupdate current-state
+echo   wso2integratorupdate --revert
+echo(
+echo Available Commands:
+echo   apply-hotfix   Apply an available hotfix.
+echo   apply-update   Apply a created update zip file to the product.
+echo   check          Check available new levels for the product.
+echo   completion     Generate shell autocompletion scripts.
+echo   create-docker  Create a Docker image of the product.
+echo   create-update  Create an update zip file for the product.
+echo   current-state  Show current details of the product.
+echo   help           Help about any command.
+echo   revert-hotfix  Revert the most recently applied hotfix.
+echo   version        Print the update tool version information.
+echo(
+echo Flags:
+echo   -b, --backup string     Specify updates backup directory
+echo   -c, --channel string    Channel updates should be downloaded from ^(default "full"^)
+echo       --continue          Merge resolved conflicts
+echo       --dry-run           Simulate the update
+echo   -h, --help              help for wso2integratorupdate
+echo   -l, --level string      Level in which the product should be updated to
+echo       --no-backup         Skip product backup
+echo   -p, --password string   Specify your WSO2 account password
+echo       --revert            Revert to the previous update level
+echo       --template string   Specify the template output
+echo   -u, --username string   Specify your WSO2 account email
+echo   -v, --verbose           Enable verbose mode
 exit /b 0
 
 :is_valid_update_invocation

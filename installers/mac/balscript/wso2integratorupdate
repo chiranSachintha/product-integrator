@@ -12,16 +12,48 @@ PROFILE_STATE_FILE="$HOME/.wso2-integrator/selected-profile"
 print_usage() {
     cat <<'EOF'
 Usage:
-  wso2integratorupdate [flags]
-  wso2integratorupdate <ballerina|icp|mi|si> [flags]
+  wso2integratorupdate [command] [flags]
+  wso2integratorupdate <ballerina|icp|mi|si> [command] [flags]
 
-Commands:
   ballerina   Run the Ballerina update flow.
   icp         Run the ICP update flow.
   mi          Run the MI update flow.
   si          Run the SI update flow.
 
 The default command is selected from the active Integration Profile.
+
+Examples:
+  wso2integratorupdate check
+  wso2integratorupdate version
+  wso2integratorupdate help check
+  wso2integratorupdate current-state
+  wso2integratorupdate --revert
+
+Available Commands:
+  apply-hotfix   Apply an available hotfix.
+  apply-update   Apply a created update zip file to the product.
+  check          Check available new levels for the product.
+  completion     Generate shell autocompletion scripts.
+  create-docker  Create a Docker image of the product.
+  create-update  Create an update zip file for the product.
+  current-state  Show current details of the product.
+  help           Help about any command.
+  revert-hotfix  Revert the most recently applied hotfix.
+  version        Print the update tool version information.
+
+Flags:
+  -b, --backup string     Specify updates backup directory
+  -c, --channel string    Channel updates should be downloaded from (default "full")
+      --continue          Merge resolved conflicts
+      --dry-run           Simulate the update
+  -h, --help              help for wso2integratorupdate
+  -l, --level string      Level in which the product should be updated to
+      --no-backup         Skip product backup
+  -p, --password string   Specify your WSO2 account password
+      --revert            Revert to the previous update level
+      --template string   Specify the template output
+  -u, --username string   Specify your WSO2 account email
+  -v, --verbose           Enable verbose mode
 EOF
 }
 
@@ -57,7 +89,7 @@ if [ "$#" -ge 1 ]; then
             shift
             COMMAND_ARGS=("$@")
             ;;
-        -*)
+        version|current-state|check|completion|apply-hotfix|apply-update|create-docker|create-update|revert-hotfix|--username|-u|--password|-p|--level|-l|--backup|-b|--channel|-c|--continue|--dry-run|--no-backup|--revert|--template|--verbose)
             COMMAND="$(read_selected_profile_command)"
             COMMAND_ARGS=("$@")
             ;;
