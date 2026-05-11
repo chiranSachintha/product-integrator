@@ -43,6 +43,19 @@
       <util:RemoveFolderEx Id="RemoveIntegratorFolder" Property="INTEGRATORFOLDER" On="uninstall" />
     </Component>
 
+    <Component Id="IntegratorPathComponent" Bitness="always64" Directory="INTEGRATORFOLDER"
+      Guid="{7b3e4d44-1a1d-4f58-bd3a-2a7f4b6c1b7f}">
+      <RegistryValue Root="HKCU" Key="Software\WSO2\Integrator" Name="PathInstalled"
+        Type="integer" Value="1" KeyPath="yes" />
+      <util:Environment Id="IntegratorPathEnv"
+        Name="PATH"
+        Action="set"
+        Part="last"
+        Separator=";"
+        System="no"
+        Value="[INTEGRATORFOLDER]bin" />
+    </Component>
+
     <Icon Id="Integrator.exe" SourceFile=".\resources\wso2.ico" />
     <Property Id="ARPPRODUCTICON" Value="Integrator.exe" />
   </Fragment>
