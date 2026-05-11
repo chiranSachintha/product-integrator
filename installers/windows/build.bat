@@ -46,6 +46,11 @@ if errorlevel 1 (
     echo Integrator extraction failed
     exit /b 1
 )
+powershell -nologo -noprofile -command "& { New-Item -ItemType Directory -Force -Path '.\WixPackage\payload\Integrator\components' | Out-Null; Set-Content -Path '.\WixPackage\payload\Integrator\components\distribution.txt' -Value 'mode=wso2' -NoNewline }"
+if errorlevel 1 (
+    echo Failed to create distribution marker
+    exit /b 1
+)
 
 REM Extract ballerina.zip
 echo Extracting Ballerina to payload

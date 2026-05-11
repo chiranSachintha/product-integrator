@@ -83,6 +83,7 @@ tar -xzf "$INTEGRATOR_TAR_GZ" -C "$INTEGRATOR_TARGET" --strip-components=1
 # Extract Ballerina zip
 print_info "Extracting Ballerina to components..."
 mkdir -p "$COMPONENTS_DIR"
+echo "mode=wso2" > "$COMPONENTS_DIR/distribution.txt"
 unzip -o "$BALLERINA_ZIP" -d "$EXTRACTION_TARGET"
 BALLERINA_UNZIPPED_FOLDER=$(unzip -Z1 "$BALLERINA_ZIP" | head -1 | cut -d/ -f1)
 BALLERINA_UNZIPPED_PATH="$EXTRACTION_TARGET/$BALLERINA_UNZIPPED_FOLDER"
