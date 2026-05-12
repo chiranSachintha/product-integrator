@@ -401,7 +401,40 @@ for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\wso2update_windows.
 
 :mi_found
 if not defined MI_UPDATE_TOOL (
-    echo Error: MI update executable not found for Windows. Please open/create a MI project. MI not in your machine.
+    set "MI_SETUP_SCRIPT="
+    for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\bin\update_tool_setup.ps1" 2^>nul') do (
+        set "MI_SETUP_SCRIPT=%%F"
+        goto mi_setup_found
+    )
+)
+
+:mi_setup_found
+if not defined MI_SETUP_SCRIPT (
+    echo Error: update_tool_setup.ps1 not found for MI. Please open/create a MI project. MI not in your machine.
+    exit /b 1
+)
+
+set "MI_BIN_DIR=%MI_SETUP_SCRIPT%\.."
+for %%I in ("%MI_BIN_DIR%") do set "MI_BIN_DIR=%%~fI"
+
+if not defined MI_UPDATE_TOOL (
+    pushd "%MI_BIN_DIR%"
+    powershell -nologo -noprofile -ExecutionPolicy Bypass -File ".\update_tool_setup.ps1"
+    if errorlevel 1 (
+        popd
+        exit /b 1
+    )
+    popd
+
+    for /f "delims=" %%F in ('dir /b /a-d /on "%MI_BIN_DIR%\wso2update_*.exe" 2^>nul') do (
+        set "MI_UPDATE_TOOL=%MI_BIN_DIR%\%%F"
+        goto mi_found_after_setup
+    )
+)
+
+:mi_found_after_setup
+if not defined MI_UPDATE_TOOL (
+    echo Error: MI update executable not found in "%MI_BIN_DIR%"
     exit /b 1
 )
 
@@ -479,7 +512,40 @@ for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\wso2update_windows.
 
 :si_found
 if not defined SI_UPDATE_TOOL (
-    echo Error: SI update executable not found for Windows. Please open/create a SI project. SI not in your machine.
+    set "SI_SETUP_SCRIPT="
+    for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\bin\update_tool_setup.ps1" 2^>nul') do (
+        set "SI_SETUP_SCRIPT=%%F"
+        goto si_setup_found
+    )
+)
+
+:si_setup_found
+if not defined SI_SETUP_SCRIPT (
+    echo Error: update_tool_setup.ps1 not found for SI. Please open/create a SI project. SI not in your machine.
+    exit /b 1
+)
+
+set "SI_BIN_DIR=%SI_SETUP_SCRIPT%\.."
+for %%I in ("%SI_BIN_DIR%") do set "SI_BIN_DIR=%%~fI"
+
+if not defined SI_UPDATE_TOOL (
+    pushd "%SI_BIN_DIR%"
+    powershell -nologo -noprofile -ExecutionPolicy Bypass -File ".\update_tool_setup.ps1"
+    if errorlevel 1 (
+        popd
+        exit /b 1
+    )
+    popd
+
+    for /f "delims=" %%F in ('dir /b /a-d /on "%SI_BIN_DIR%\wso2update_*.exe" 2^>nul') do (
+        set "SI_UPDATE_TOOL=%SI_BIN_DIR%\%%F"
+        goto si_found_after_setup
+    )
+)
+
+:si_found_after_setup
+if not defined SI_UPDATE_TOOL (
+    echo Error: SI update executable not found in "%SI_BIN_DIR%"
     exit /b 1
 )
 
