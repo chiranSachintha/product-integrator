@@ -196,9 +196,11 @@ exit /b 1
 set "RESOLVED_COMMAND=ballerina"
 if exist "%PROFILE_STATE_FILE%" (
     set "PROFILE_VALUE="
-    set /p PROFILE_VALUE=<"%PROFILE_STATE_FILE%"
-    if /I "%PROFILE_VALUE%"=="WSO2 Integrator: MI" set "RESOLVED_COMMAND=mi"
-    if /I "%PROFILE_VALUE%"=="WSO2 Integrator: SI" set "RESOLVED_COMMAND=si"
+    for /f "usebackq delims=" %%P in (`powershell -nologo -noprofile -command "$path = '%PROFILE_STATE_FILE%'; if (Test-Path -LiteralPath $path) { $value = Get-Content -LiteralPath $path -Raw; if ($null -ne $value) { $value = $value -replace '^\uFEFF',''; $value.Trim() } }"`) do (
+        set "PROFILE_VALUE=%%P"
+    )
+    if /I "!PROFILE_VALUE!"=="WSO2 Integrator: MI" set "RESOLVED_COMMAND=mi"
+    if /I "!PROFILE_VALUE!"=="WSO2 Integrator: SI" set "RESOLVED_COMMAND=si"
 )
 goto :eof
 
