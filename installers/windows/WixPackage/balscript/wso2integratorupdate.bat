@@ -394,17 +394,22 @@ call :is_valid_update_invocation
 if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 
 set "MI_UPDATE_TOOL="
-for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
-    set "MI_UPDATE_TOOL=%%F"
-    goto mi_found
+for /d %%D in ("%MI_CACHE_DIR%\*") do (
+    if exist "%%~fD\bin\wso2update_windows.exe" (
+        set "MI_UPDATE_TOOL=%%~fD\bin\wso2update_windows.exe"
+        goto mi_found
+    )
 )
 
 :mi_found
+if defined MI_UPDATE_TOOL goto mi_have_tool
 if not defined MI_UPDATE_TOOL (
     set "MI_SETUP_SCRIPT="
-    for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\bin\update_tool_setup.ps1" 2^>nul') do (
-        set "MI_SETUP_SCRIPT=%%F"
-        goto mi_setup_found
+    for /d %%D in ("%MI_CACHE_DIR%\*") do (
+        if exist "%%~fD\bin\update_tool_setup.ps1" (
+            set "MI_SETUP_SCRIPT=%%~fD\bin\update_tool_setup.ps1"
+            goto mi_setup_found
+        )
     )
 )
 
@@ -438,6 +443,10 @@ if not defined MI_UPDATE_TOOL (
     exit /b 1
 )
 
+set "MI_UPDATE_TOOL_DIR=%MI_UPDATE_TOOL%\.."
+for %%I in ("%MI_UPDATE_TOOL_DIR%") do set "MI_BIN_DIR=%%~fI"
+
+:mi_have_tool
 if defined FIRST_ARG (
     if defined REMAINING_ARGS (
         set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
@@ -503,17 +512,22 @@ call :is_valid_update_invocation
 if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 
 set "SI_UPDATE_TOOL="
-for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
-    set "SI_UPDATE_TOOL=%%F"
-    goto si_found
+for /d %%D in ("%SI_CACHE_DIR%\*") do (
+    if exist "%%~fD\bin\wso2update_windows.exe" (
+        set "SI_UPDATE_TOOL=%%~fD\bin\wso2update_windows.exe"
+        goto si_found
+    )
 )
 
 :si_found
+if defined SI_UPDATE_TOOL goto si_have_tool
 if not defined SI_UPDATE_TOOL (
     set "SI_SETUP_SCRIPT="
-    for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\bin\update_tool_setup.ps1" 2^>nul') do (
-        set "SI_SETUP_SCRIPT=%%F"
-        goto si_setup_found
+    for /d %%D in ("%SI_CACHE_DIR%\*") do (
+        if exist "%%~fD\bin\update_tool_setup.ps1" (
+            set "SI_SETUP_SCRIPT=%%~fD\bin\update_tool_setup.ps1"
+            goto si_setup_found
+        )
     )
 )
 
@@ -547,6 +561,10 @@ if not defined SI_UPDATE_TOOL (
     exit /b 1
 )
 
+set "SI_UPDATE_TOOL_DIR=%SI_UPDATE_TOOL%\.."
+for %%I in ("%SI_UPDATE_TOOL_DIR%") do set "SI_BIN_DIR=%%~fI"
+
+:si_have_tool
 if defined FIRST_ARG (
     if defined REMAINING_ARGS (
         set "FORWARD_ARGS=%FIRST_ARG% %REMAINING_ARGS%"
