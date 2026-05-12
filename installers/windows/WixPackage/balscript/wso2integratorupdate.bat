@@ -390,8 +390,6 @@ if /I "%FIRST_ARG%"=="--help" goto mi_help
 if /I "%FIRST_ARG%"=="help" goto mi_help
 call :is_valid_update_invocation
 if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
-call :guard_if_running mi
-if errorlevel 1 exit /b 1
 
 set "MI_UPDATE_TOOL="
 for /f "delims=" %%F in ('dir /s /b /a-d /on "%MI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
@@ -501,8 +499,6 @@ if /I "%FIRST_ARG%"=="--help" goto si_help
 if /I "%FIRST_ARG%"=="help" goto si_help
 call :is_valid_update_invocation
 if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
-call :guard_if_running si
-if errorlevel 1 exit /b 1
 
 set "SI_UPDATE_TOOL="
 for /f "delims=" %%F in ('dir /s /b /a-d /on "%SI_CACHE_DIR%\wso2update_windows.exe" 2^>nul') do (
