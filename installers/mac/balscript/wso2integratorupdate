@@ -293,9 +293,6 @@ EOF
 
         SI_UPDATE_TOOL="$(find "$SI_CACHE_DIR" -type f -path '*/bin/wso2update_darwin' -perm -111 2>/dev/null | sort -V | tail -1)"
         if [ -z "$SI_UPDATE_TOOL" ]; then
-            SI_UPDATE_TOOL="$(find "$SI_CACHE_DIR" -type f -path '*/bin/wso2update_*' -perm -111 2>/dev/null | sort -V | tail -1)"
-        fi
-        if [ -z "$SI_UPDATE_TOOL" ]; then
             SI_SETUP_SCRIPT="$(find "$SI_CACHE_DIR" -type f -path '*/bin/update_tool_setup.sh' -perm -111 2>/dev/null | sort -V | tail -1)"
             if [ -z "$SI_SETUP_SCRIPT" ]; then
                 echo "Error: update_tool_setup.sh not found for SI. Please open/create a SI project. SI not in your machine."
@@ -303,10 +300,10 @@ EOF
             fi
 
             SI_BIN_DIR="$(dirname "$SI_SETUP_SCRIPT")"
-            SI_UPDATE_TOOL="$(find "$SI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 2>/dev/null | head -1)"
+            SI_UPDATE_TOOL="$(find "$SI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_darwin' -perm -111 2>/dev/null | head -1)"
             if [ -z "$SI_UPDATE_TOOL" ]; then
                 (cd "$SI_BIN_DIR" && ./update_tool_setup.sh)
-                SI_UPDATE_TOOL="$(find "$SI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_*' -perm -111 2>/dev/null | head -1)"
+                SI_UPDATE_TOOL="$(find "$SI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_darwin' -perm -111 2>/dev/null | head -1)"
             fi
 
             if [ -z "$SI_UPDATE_TOOL" ]; then

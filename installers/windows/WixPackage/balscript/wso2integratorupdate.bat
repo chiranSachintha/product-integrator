@@ -533,7 +533,7 @@ if not defined SI_UPDATE_TOOL (
     )
     popd
 
-    for /f "delims=" %%F in ('dir /b /a-d /on "%SI_BIN_DIR%\wso2update_*.exe" 2^>nul') do (
+    for /f "delims=" %%F in ('dir /b /a-d /on "%SI_BIN_DIR%\wso2update_windows.exe" 2^>nul') do (
         set "SI_UPDATE_TOOL=%SI_BIN_DIR%\%%F"
         goto si_found_after_setup
     )
