@@ -287,11 +287,23 @@ EOF
 
         MI_UPDATE_TOOL="$(find "$MI_CACHE_DIR" -type f -path '*/bin/wso2update_linux' -perm -111 2>/dev/null | sort -V | tail -1)"
         if [ -z "$MI_UPDATE_TOOL" ]; then
-            MI_UPDATE_TOOL="$(find "$MI_CACHE_DIR" -type f -path '*/bin/wso2update_*' -perm -111 2>/dev/null | sort -V | tail -1)"
-        fi
-        if [ -z "$MI_UPDATE_TOOL" ]; then
-            echo "Error: MI update executable not found for Linux. Please open/create a MI project. MI not in your machine."
-            exit 1
+            MI_SETUP_SCRIPT="$(find "$MI_CACHE_DIR" -type f -path '*/bin/update_tool_setup.sh' -perm -111 2>/dev/null | sort -V | tail -1)"
+            if [ -z "$MI_SETUP_SCRIPT" ]; then
+                echo "Error: update_tool_setup.sh not found for MI. Please open/create a MI project. MI not in your machine."
+                exit 1
+            fi
+
+            MI_BIN_DIR="$(dirname "$MI_SETUP_SCRIPT")"
+            MI_UPDATE_TOOL="$(find "$MI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_linux' -perm -111 2>/dev/null | head -1)"
+            if [ -z "$MI_UPDATE_TOOL" ]; then
+                (cd "$MI_BIN_DIR" && ./update_tool_setup.sh)
+                MI_UPDATE_TOOL="$(find "$MI_BIN_DIR" -maxdepth 1 -type f -name 'wso2update_linux' -perm -111 2>/dev/null | head -1)"
+            fi
+
+            if [ -z "$MI_UPDATE_TOOL" ]; then
+                echo "Error: MI update executable not found in $MI_BIN_DIR"
+                exit 1
+            fi
         fi
 
         exec "$MI_UPDATE_TOOL" "${COMMAND_ARGS[@]}"
