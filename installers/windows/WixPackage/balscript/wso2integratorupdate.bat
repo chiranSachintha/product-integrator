@@ -192,6 +192,15 @@ if defined REMAINING_ARGS (
 echo.
 exit /b 1
 
+:find_latest_windows_version_dir
+set "CACHE_DIR=%~1"
+set "OUT_VAR=%~2"
+set "%OUT_VAR%="
+for /f "delims=" %%F in ('powershell -nologo -noprofile -ExecutionPolicy Bypass -command "$base = $env:CACHE_DIR; $latest = Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue | Sort-Object -Property @{Expression={ try { [version](($_.Name -replace \"^[^-]+-\",\"\")) } catch { [version]\"0.0.0\" } }} | Select-Object -Last 1; if ($latest) { $latest.FullName }"') do (
+    set "%OUT_VAR%=%%F"
+)
+goto :eof
+
 :resolve_profile_command
 set "RESOLVED_COMMAND=ballerina"
 if exist "%PROFILE_STATE_FILE%" (
@@ -394,10 +403,10 @@ call :is_valid_update_invocation
 if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 
 set "MI_UPDATE_TOOL="
-for /d %%D in ("%MI_CACHE_DIR%\*") do (
-    if exist "%%~fD\bin\wso2update_windows.exe" (
-        set "MI_UPDATE_TOOL=%%~fD\bin\wso2update_windows.exe"
-        goto mi_found
+call :find_latest_windows_version_dir "%MI_CACHE_DIR%" MI_VERSION_DIR
+if defined MI_VERSION_DIR (
+    if exist "%MI_VERSION_DIR%\bin\wso2update_windows.exe" (
+        set "MI_UPDATE_TOOL=%MI_VERSION_DIR%\bin\wso2update_windows.exe"
     )
 )
 
@@ -405,10 +414,9 @@ for /d %%D in ("%MI_CACHE_DIR%\*") do (
 if defined MI_UPDATE_TOOL goto mi_have_tool
 if not defined MI_UPDATE_TOOL (
     set "MI_SETUP_SCRIPT="
-    for /d %%D in ("%MI_CACHE_DIR%\*") do (
-        if exist "%%~fD\bin\update_tool_setup.ps1" (
-            set "MI_SETUP_SCRIPT=%%~fD\bin\update_tool_setup.ps1"
-            goto mi_setup_found
+    if defined MI_VERSION_DIR (
+        if exist "%MI_VERSION_DIR%\bin\update_tool_setup.ps1" (
+            set "MI_SETUP_SCRIPT=%MI_VERSION_DIR%\bin\update_tool_setup.ps1"
         )
     )
 )
@@ -512,10 +520,10 @@ call :is_valid_update_invocation
 if not defined VALID_UPDATE_INVOCATION goto invalid_update_invocation
 
 set "SI_UPDATE_TOOL="
-for /d %%D in ("%SI_CACHE_DIR%\*") do (
-    if exist "%%~fD\bin\wso2update_windows.exe" (
-        set "SI_UPDATE_TOOL=%%~fD\bin\wso2update_windows.exe"
-        goto si_found
+call :find_latest_windows_version_dir "%SI_CACHE_DIR%" SI_VERSION_DIR
+if defined SI_VERSION_DIR (
+    if exist "%SI_VERSION_DIR%\bin\wso2update_windows.exe" (
+        set "SI_UPDATE_TOOL=%SI_VERSION_DIR%\bin\wso2update_windows.exe"
     )
 )
 
@@ -523,10 +531,9 @@ for /d %%D in ("%SI_CACHE_DIR%\*") do (
 if defined SI_UPDATE_TOOL goto si_have_tool
 if not defined SI_UPDATE_TOOL (
     set "SI_SETUP_SCRIPT="
-    for /d %%D in ("%SI_CACHE_DIR%\*") do (
-        if exist "%%~fD\bin\update_tool_setup.ps1" (
-            set "SI_SETUP_SCRIPT=%%~fD\bin\update_tool_setup.ps1"
-            goto si_setup_found
+    if defined SI_VERSION_DIR (
+        if exist "%SI_VERSION_DIR%\bin\update_tool_setup.ps1" (
+            set "SI_SETUP_SCRIPT=%SI_VERSION_DIR%\bin\update_tool_setup.ps1"
         )
     )
 )
