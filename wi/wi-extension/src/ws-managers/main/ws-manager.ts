@@ -296,9 +296,9 @@ export class MainWsManager implements WIVisualizerAPI {
 
         await workspace.getConfiguration().update(params.section, params.value, target);
 
-        if (params.section === "integrator.selectedProfile" && typeof params.value === "string") {
-            writeSelectedProfileState(params.value as SelectedProfileValue);
-        }
+        // if (params.section === "integrator.selectedProfile" && typeof params.value === "string") {
+        //     writeSelectedProfileState(params.value as SelectedProfileValue);
+        // }
     }
 
     async getSupportedMIVersionsHigherThan(version: string): Promise<GetSupportedMIVersionsResponse> {
