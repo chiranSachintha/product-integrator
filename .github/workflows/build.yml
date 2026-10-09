@@ -1,0 +1,1917 @@
+name: Build
+
+# The build engine: compile, package the installers for every platform, sign, and optionally publish.
+# Not runnable on its own — dev-build.yml and release.yml are the two entry points. They prepare a
+# branch, stamp the versions, and hand the result here as an artifact.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Select runner type'
+        required: false
+        default: 'ubuntu-latest'
+        type: string
+      build_linux:
+        description: 'Build for Linux'
+        required: false
+        default: true
+        type: boolean
+      build_macos:
+        description: 'Build for macOS (Apple Silicon and Intel)'
+        required: false
+        default: true
+        type: boolean
+      build_windows:
+        description: 'Build for Windows'
+        required: false
+        default: true
+        type: boolean
+      build_packed_installers:
+        description: 'Whether to build Ballerina, ICP, and Integrator packed installers'
+        default: true
+        required: false
+        type: boolean
+      # Publishing an update makes this build the one clients on its line are offered, so it is a
+      # release decision and every other caller must opt in explicitly. Defaults to false because a
+      # nightly also produces installers and a publish_tag, and would otherwise claim the release
+      # line by default.
+      publish_update_source:
+        description: 'Publish the update source document for this build. Release only.'
+        default: false
+        required: false
+        type: boolean
+      run_smoke_tests:
+        description: 'Whether to run the UI smoke tests. Only takes effect when build_packed_installers is true.'
+        default: true
+        required: false
+        type: boolean
+      smoke_tests_required:
+        description: 'Whether a failing smoke test fails this build and blocks publishing.'
+        default: true
+        required: false
+        type: boolean
+      ballerina_extension_source:
+        description: 'Choose whether to bundle Ballerina from GitHub VSIX or use marketplace flow'
+        required: false
+        default: 'github'
+        type: string
+      mi_extension_source:
+        description: 'Choose whether to bundle MI from GitHub VSIX or use marketplace flow'
+        required: false
+        default: 'github'
+        type: string
+      # Update channel the component-update manifest is published to (insider | beta | stable).
+      # New builds land in `insider` first; promote-channel.yml moves a manifest down the ladder.
+      channel:
+        description: 'Update channel to publish the update manifest to'
+        required: false
+        default: 'insider'
+        type: string
+      # Which clients this release serves. Each release publishes its own source-<version>.json and
+      # claims a line in the index, so a 5.2 release never overwrites the document 5.1.x clients are
+      # still served from. Accepts a wildcard (5.1.x), an exact version (5.1.4), a range
+      # (">=5.1.0 <5.2.0") or "*" for everything. Defaults to this build's own <major>.<minor>.x,
+      # which is what a normal release wants; set it explicitly for a hotfix that should reach only
+      # one version, or to hand an old line its migration build.
+      update_line_selector:
+        description: 'Client versions this release serves (e.g. 5.1.x). Defaults to <major>.<minor>.x of this build.'
+        required: false
+        default: ''
+        type: string
+      # Under `workflow_call`, `github.ref` is the *caller's* triggering ref, so a dispatcher that
+      # prepares a branch and then calls this workflow would compile the ref it was dispatched on
+      # (main) rather than the branch it just prepared. Callers that prepare a branch pass its SHA
+      # here so the tree, the branch, the tag and `target_commitish` all describe the same commit.
+      #
+      # One thing this cannot fix: with `uses: ./.github/workflows/...` the reusable workflow
+      # *definitions* are always read from the caller's ref, never from this input. That is
+      # harmless here, since both dispatchers cut their branch from the ref they were dispatched
+      # on and add nothing but a version commit.
+      ref:
+        description: 'Ref or SHA to build. Empty builds the ref this workflow was called from.'
+        required: false
+        default: ''
+        type: string
+      versions_artifact:
+        description: 'Artifact holding the already-stamped component-versions.properties and wi-extension package.json. Empty means stamp here from the current ref.'
+        required: false
+        default: ''
+        type: string
+      publish_tag:
+        description: "Release tag to publish under. Empty publishes nothing (workflow artifacts only); `nightly` is the rolling tag and replaces the previous release; anything else is created as-is."
+        required: false
+        default: ''
+        type: string
+      is_prerelease:
+        description: 'Mark the GitHub release as a pre-release. False also makes it the repository Latest.'
+        required: false
+        default: true
+        type: boolean
+      target_commitish:
+        description: 'Commit the release points at. Empty uses the commit this run started from.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  id-token: write
+  contents: write     
+
+env:
+  # product.commit = product-integrator root sha (not the lib/vscode submodule sha) so each release
+  # has a distinct commit for update checks. getVersion() prefers BUILD_SOURCEVERSION.
+  BUILD_SOURCEVERSION: ${{ github.sha }}
+jobs:
+  # Settle the product and extension versions ONCE, up front, and hand the resulting files to every
+  # other job as an artifact. A VS Code extension version must be exactly three integers, so
+  # `1.2.0-SNAPSHOT` can never be packaged and some job has to stamp on every path.
+  #
+  # Callers that prepared a branch (daily-build.yml, release.yml) pass their own artifact and
+  # this job just re-publishes it. A caller that passes nothing gets a stamp from the current ref:
+  # apply-version.sh is shape-based, rewriting only `-SNAPSHOT` values, so a concrete version always
+  # passes through verbatim and the build ships exactly what the branch declares.
+  stamp-version:
+    name: Stamp Versions
+    runs-on: ubuntu-latest
+    outputs:
+      integrator_version: ${{ steps.stamp.outputs.integrator_version }}
+      wi_extension_version: ${{ steps.stamp.outputs.wi_extension_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Download the caller's versions
+        if: ${{ inputs.versions_artifact != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.versions_artifact }}
+          path: .
+
+      # Re-run unconditionally: a no-op on a prepared branch, and the stamp itself when the caller
+      # passed nothing. Either way this is the single point where the versions become final.
+      - name: Apply versions
+        id: stamp
+        shell: bash
+        run: |
+          chmod +x ./ci/build/apply-version.sh
+          ./ci/build/apply-version.sh
+
+      - name: Upload versions
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-versions
+          path: |
+            ci/build/component-versions.properties
+            wi/wi-extension/package.json
+          if-no-files-found: error
+
+  resolve-versions:
+    name: Resolve Component Versions
+    needs: stamp-version
+    runs-on: ubuntu-latest
+    outputs:
+      ballerina_version: ${{ steps.read-versions.outputs.ballerina_version }}
+      ballerina_extension_version: ${{ steps.read-versions.outputs.ballerina_extension_version }}
+      ballerina_extension_tag: ${{ steps.read-versions.outputs.ballerina_extension_tag }}
+      mi_extension_version: ${{ steps.read-versions.outputs.mi_extension_version }}
+      mi_extension_tag: ${{ steps.read-versions.outputs.mi_extension_tag }}
+      icp_version: ${{ steps.read-versions.outputs.icp_version }}
+      integrator_version: ${{ steps.read-versions.outputs.integrator_version }}
+      ballerina_jre_version: ${{ steps.read-versions.outputs.ballerina_jre_version }}
+    steps:
+      # Checked here rather than in Publish Update Source, because build-macos and build-windows
+      # bake WSO2_UPDATE_URL and WSO2_UPDATE_PUBLIC_KEY into product.json long before that job
+      # runs. A late check cannot stop a run from shipping installers that pin no key and skip
+      # signature verification; this one can, and it costs seconds instead of a full build.
+      # Conditions mirror the Publish Update Source job's own `if:`, so a run that would not
+      # publish anyway is never failed for missing publish secrets.
+      - name: Check the publish path is configured
+        if: ${{ inputs.publish_update_source == true && inputs.build_packed_installers == true && inputs.publish_tag != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${AWS_UPDATE_S3_BUCKET}" ] || missing+=("AWS_UPDATE_S3_BUCKET")
+          [ -n "${AWS_ACCESS_KEY_ID}" ] || missing+=("AWS_ACCESS_KEY_ID (nothing could be uploaded to the update bucket)")
+          [ -n "${AWS_SECRET_ACCESS_KEY}" ] || missing+=("AWS_SECRET_ACCESS_KEY")
+          [ -n "${WSO2_UPDATE_ARTIFACTS_URL}" ] || missing+=("WSO2_UPDATE_ARTIFACTS_URL (artifacts must be mirrored; clients refuse upstream hosts)")
+          [ -n "${WSO2_UPDATE_URL}" ] || missing+=("WSO2_UPDATE_URL (clients built here would have no update endpoint)")
+          [ -n "${WSO2_UPDATE_PUBLIC_KEY}" ] || missing+=("WSO2_UPDATE_PUBLIC_KEY (clients built here would pin no key and accept unverified artifacts)")
+          [ -n "${COSIGN_PRIVATE_KEY}" ] || missing+=("COSIGN_PRIVATE_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf '::error::missing required secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          echo "publish path configured for channel ${{ inputs.channel || 'insider' }}"
+        env:
+          AWS_UPDATE_S3_BUCKET: ${{ secrets.AWS_UPDATE_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          WSO2_UPDATE_ARTIFACTS_URL: ${{ secrets.WSO2_UPDATE_ARTIFACTS_URL }}
+          WSO2_UPDATE_URL: ${{ secrets.WSO2_UPDATE_URL }}
+          WSO2_UPDATE_PUBLIC_KEY: ${{ secrets.WSO2_UPDATE_PUBLIC_KEY }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+
+      - name: cosign-installer
+        if: ${{ inputs.publish_update_source == true && inputs.build_packed_installers == true && inputs.publish_tag != '' }}
+        uses: sigstore/cosign-installer@v3
+
+      # Presence is not enough: a pinned key from the wrong pair passes every check downstream,
+      # because the signing steps verify against the signing key itself. Only comparing the two
+      # catches it, and it has to happen here — build-macos and build-windows bake the pinned key
+      # into product.json, so a comparison in Publish Update Source runs after the installers that
+      # carry the wrong key already exist. Deriving here also exercises COSIGN_PASSWORD, which
+      # would otherwise fail a full build later.
+      - name: Verify the pinned client key matches the signing key
+        if: ${{ inputs.publish_update_source == true && inputs.build_packed_installers == true && inputs.publish_tag != '' }}
+        run: |
+          set -euo pipefail
+          cosign public-key --key env://COSIGN_PRIVATE_KEY > signing.pub
+          grep -q 'BEGIN PUBLIC KEY' signing.pub
+          printf '%s' "$WSO2_UPDATE_PUBLIC_KEY" | base64 -d > pinned.pem 2>/dev/null || {
+            echo "::error::WSO2_UPDATE_PUBLIC_KEY is not valid base64. It must be 'base64 -w0 < cosign.pub'." >&2
+            exit 1
+          }
+          # base64 -d accepts the empty string, so an empty secret would otherwise reach openssl
+          # and die there with an opaque parse error instead of this one.
+          [ -s pinned.pem ] || {
+            echo "::error::WSO2_UPDATE_PUBLIC_KEY decoded to nothing." >&2
+            exit 1
+          }
+          # DER, so PEM wrapping or a trailing newline cannot fail a correctly configured pair.
+          openssl pkey -pubin -in pinned.pem  -outform DER -out pinned.der
+          openssl pkey -pubin -in signing.pub -outform DER -out signing.der
+          if ! cmp -s pinned.der signing.der; then
+            echo "::error::WSO2_UPDATE_PUBLIC_KEY is not the public half of COSIGN_PRIVATE_KEY. Clients built here would reject every artifact this run signs." >&2
+            exit 1
+          fi
+          echo "pinned client key matches the signing key"
+          rm -f signing.pub pinned.pem pinned.der signing.der
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          WSO2_UPDATE_PUBLIC_KEY: ${{ secrets.WSO2_UPDATE_PUBLIC_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Download stamped versions
+        uses: actions/download-artifact@v4
+        with:
+          name: build-versions
+          path: .
+
+      - name: Read versions file
+        id: read-versions
+        shell: bash
+        run: |
+          VERSIONS_FILE="ci/build/component-versions.properties"
+          if [ ! -f "${VERSIONS_FILE}" ]; then
+            echo "Error: ${VERSIONS_FILE} does not exist." >&2
+            exit 1
+          fi
+
+          read_property() {
+            local key="$1"
+            awk -F= -v property_key="$key" '$1 == property_key { print substr($0, index($0, "=") + 1); exit }' "${VERSIONS_FILE}" | tr -d '\r'
+          }
+
+          BALLERINA_VERSION=$(read_property "ballerina.version")
+          BALLERINA_EXTENSION_VERSION=$(read_property "ballerina.extension.version")
+          MI_EXTENSION_VERSION=$(read_property "wso2.micro-integrator.extension.version")
+          ICP_VERSION=$(read_property "icp.version")
+          INTEGRATOR_VERSION=$(read_property "integrator.version")
+          BALLERINA_JRE_VERSION=$(read_property "ballerina.jre.version")
+
+          # A `<key>.tag` companion is only present when the upstream release tag cannot be derived
+          # from the version (a rolling tag such as wso2/ballerina-vscode's `nightly`, pinned by
+          # ci/build/resolve-nightly-versions.sh). Otherwise the conventional v<version> tag applies.
+          BALLERINA_EXTENSION_TAG=$(read_property "ballerina.extension.version.tag")
+          MI_EXTENSION_TAG=$(read_property "wso2.micro-integrator.extension.version.tag")
+
+          if [ -z "${BALLERINA_VERSION}" ] || [ -z "${ICP_VERSION}" ] || [ -z "${INTEGRATOR_VERSION}" ] || [ -z "${BALLERINA_JRE_VERSION}" ]; then
+            echo "Error: ballerina.version, icp.version, integrator.version, and ballerina.jre.version must be set in ${VERSIONS_FILE}." >&2
+            exit 1
+          fi
+
+          if [[ -n "${BALLERINA_EXTENSION_VERSION}" && "${BALLERINA_EXTENSION_VERSION}" =~ ^[vV] ]]; then
+            echo "Error: ballerina.extension.version must not start with 'v'." >&2
+            exit 1
+          fi
+
+          if [[ -n "${MI_EXTENSION_VERSION}" && "${MI_EXTENSION_VERSION}" =~ ^[vV] ]]; then
+            echo "Error: wso2.micro-integrator.extension.version must not start with 'v'." >&2
+            exit 1
+          fi
+
+          echo "ballerina_version=${BALLERINA_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "ballerina_extension_version=${BALLERINA_EXTENSION_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "ballerina_extension_tag=${BALLERINA_EXTENSION_TAG:-v${BALLERINA_EXTENSION_VERSION}}" >> "$GITHUB_OUTPUT"
+          echo "mi_extension_version=${MI_EXTENSION_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "mi_extension_tag=${MI_EXTENSION_TAG:-v${MI_EXTENSION_VERSION}}" >> "$GITHUB_OUTPUT"
+          echo "icp_version=${ICP_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "integrator_version=${INTEGRATOR_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "ballerina_jre_version=${BALLERINA_JRE_VERSION}" >> "$GITHUB_OUTPUT"
+
+  compile:
+    needs: [stamp-version, resolve-versions]
+    uses: ./.github/workflows/compile.yml
+    secrets: inherit
+    with:
+      runOnAWS: ${{ inputs.runner == 'codebuild' }}
+      runner: ${{ inputs.runner != 'codebuild' && inputs.runner || '' }}
+      ballerina_extension_source: ${{ inputs.ballerina_extension_source }}
+      mi_extension_source: ${{ inputs.mi_extension_source }}
+      build_packed_installers: ${{ inputs.build_packed_installers == true }}
+      versions_artifact: build-versions
+      ref: ${{ inputs.ref }}
+      is_prerelease: ${{ inputs.is_prerelease }}
+
+  smoke-test:
+    if: ${{ inputs.build_packed_installers == true && inputs.run_smoke_tests == true }}
+    needs: compile
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      artifact_name: Product-Integrator-DEB
+      # Same reason `compile` gets it: the smoke test runs ci/build/patch-wso2ipw-smoke-tests.js, so it
+      # must read that script from the commit under test, not from the caller's triggering ref.
+      ref: ${{ inputs.ref }}
+      allow_failure: ${{ inputs.smoke_tests_required == false }}
+
+  smoke-test-windows:
+    if: ${{ inputs.build_windows == true && inputs.build_packed_installers == true && inputs.run_smoke_tests == true }}
+    needs: build-windows
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      windows_artifact_name: Product-Integrator-Windows
+      ref: ${{ inputs.ref }}
+      allow_failure: ${{ inputs.smoke_tests_required == false }}
+
+  build-macos:
+    if: ${{ inputs.build_macos == true }}
+    name: Build (macOS)
+    runs-on: ${{ matrix.runner }}
+    needs: [resolve-versions, compile]
+    defaults:
+      run:
+        working-directory: lib/vscode
+    strategy:
+      # The two arches are independent ~40-minute builds; with fail-fast a stumble on one
+      # cancels a perfectly good build of the other and both have to be redone.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            # macos-15-intel is the last available Intel (x86_64) GitHub-hosted runner.
+            # It will be retired in August 2027 — revisit the x64 build strategy before then.
+            #http://github.com/actions/runner-images/issues/13045
+            runner: macos-15-intel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: lib/vscode/.nvmrc
+          cache: npm
+          cache-dependency-path: lib/vscode/package-lock.json
+
+      - name: Cache Rust toolchain (macOS)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: cargo-toolchain-macos-${{ matrix.arch }}-${{ hashFiles('lib/vscode/cli/Cargo.lock') }}
+          restore-keys: |
+            cargo-toolchain-macos-${{ matrix.arch }}-
+            cargo-toolchain-macos-
+
+      - name: Cache CLI compilation (macOS)
+        id: cache-cli-macos
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/vscode/cli/target/
+          key: cli-macos-${{ matrix.arch }}-${{ hashFiles('patches/*.diff', 'lib/vscode/cli/Cargo.lock', 'lib/vscode/cli/src/**/*.rs', 'lib/vscode/cli/Cargo.toml') }}
+          restore-keys: |
+            cli-macos-${{ matrix.arch }}-
+
+      - name: Cache native modules (macOS)
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            lib/vscode/.build/node_modules_cache
+          key: native-modules-macos-${{ matrix.arch }}-${{ hashFiles('lib/vscode/package-lock.json', 'patches/*.diff') }}
+          restore-keys: |
+            native-modules-macos-${{ matrix.arch }}-
+            native-modules-macos-
+
+      - name: Cache built-in extensions
+        id: cache-extensions-macos
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/vscode/.build/builtInExtensions
+            lib/vscode/.build/extensions
+          key: extensions-shared-${{ inputs.ballerina_extension_source }}-${{ needs.resolve-versions.outputs.ballerina_extension_version }}-${{ inputs.mi_extension_source }}-${{ needs.resolve-versions.outputs.mi_extension_version }}-${{ hashFiles('patches/*.diff', 'ci/build/update-product.sh', 'ci/build/component-versions.properties', 'lib/vscode/package.json', 'wi/**') }}
+          # Partial restore so a cold key doesn't mean a cold cache: this prefix is the exact key minus
+          # the file-hash component, so a patch or wi/** edit falls back to the previous run instead of
+          # re-downloading every extension.
+          #
+          # What the fallback does and does not hold fixed, since it is not uniform: Ballerina and MI
+          # have their own key fields -- they are the two with a marketplace-vs-vsix source switch, and
+          # the version came along with the switch -- so a fallback cannot cross their versions. The
+          # streaming-integrator, hurl-client and mcp-server-inspector versions live only inside the
+          # dropped hash, so a fallback CAN cross those, as it can WI's. That is safe but not free:
+          # download-builtin-extensions re-validates by version string (isUpToDate), which catches those
+          # three because their versions move when their contents do. It cannot catch WI, whose version
+          # is hand-bumped and stays constant across content changes -- hence the explicit removal in
+          # "Install builtin extensions" below.
+          restore-keys: |
+            extensions-shared-${{ inputs.ballerina_extension_source }}-${{ needs.resolve-versions.outputs.ballerina_extension_version }}-${{ inputs.mi_extension_source }}-${{ needs.resolve-versions.outputs.mi_extension_version }}-
+
+      - name: Download compilation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: compilation
+          path: lib/vscode
+
+      - name: Extract compilation output
+        run: tar -xzf compilation.tar.gz
+
+      - name: Download WI extension VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: wi-extension-vsix
+          path: wi/wi-extension
+
+      - name: Install quilt (macOS)
+        run: |
+          brew install quilt
+
+      - name: Apply patches (macOS)
+        run: quilt push -a
+
+      - name: Set Ballerina extension version
+        if: ${{ needs.resolve-versions.outputs.ballerina_extension_version != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          echo "BALLERINA_EXTENSION_VERSION=${{ needs.resolve-versions.outputs.ballerina_extension_version }}" >> "$GITHUB_ENV"
+
+      - name: Download archived Ballerina VSIX
+        if: ${{ inputs.ballerina_extension_source == 'github' && needs.resolve-versions.outputs.ballerina_extension_version != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          chmod +x ./ci/download-vsix.sh
+          BALLERINA_VSIX_PATH=$(./ci/download-vsix.sh "wso2/ballerina-vscode" "${{ needs.resolve-versions.outputs.ballerina_extension_version }}" "ballerina-${{ needs.resolve-versions.outputs.ballerina_extension_version }}.vsix" "$PWD" "${{ needs.resolve-versions.outputs.ballerina_extension_tag }}")
+          echo "BALLERINA_VSIX_PATH=${BALLERINA_VSIX_PATH}" >> "$GITHUB_ENV"
+
+      - name: Download archived MI VSIX
+        if: ${{ inputs.mi_extension_source == 'github' && needs.resolve-versions.outputs.mi_extension_version != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          chmod +x ./ci/download-vsix.sh
+          MI_VSIX_PATH=$(./ci/download-vsix.sh "wso2/mi-vscode" "${{ needs.resolve-versions.outputs.mi_extension_version }}" "micro-integrator-${{ needs.resolve-versions.outputs.mi_extension_version }}.vsix" "$PWD" "${{ needs.resolve-versions.outputs.mi_extension_tag }}")
+          echo "MI_VSIX_PATH=${MI_VSIX_PATH}" >> "$GITHUB_ENV"
+
+      # Deliberately after the cache steps: a timestamped version in
+      # hashFiles('ci/build/component-versions.properties') would bust the extensions cache every run.
+      - name: Download stamped versions
+        uses: actions/download-artifact@v4
+        with:
+          name: build-versions
+          path: .
+
+      - name: Update product.json and branding
+        working-directory: .
+        env:
+          # Component update mechanism (all platforms): the manifest server the client polls and
+          # the public key it verifies signed manifests with. Empty when unset → the in-app
+          # component updater stays disabled and manifest signature checks are skipped.
+          WSO2_UPDATE_URL: ${{ secrets.WSO2_UPDATE_URL }}
+          WSO2_UPDATE_PUBLIC_KEY: ${{ secrets.WSO2_UPDATE_PUBLIC_KEY }}
+          # Reject an artifact that ships no signed statement. Without this, a missing statement is
+          # only logged and the artifact installs on its sha256 alone — so anyone able to serve a
+          # document skips verification entirely by just omitting the signature block.
+          # Enabled only when this build BOTH pins a key and mirrors its artifacts: statements are
+          # written for mirrored artifacts only, so requiring them while the document still points at
+          # third-party source URLs would fail every update on a check it could never pass.
+          WSO2_UPDATE_REQUIRE_ARTIFACT_SIGNATURE: ${{ secrets.WSO2_UPDATE_PUBLIC_KEY != '' && secrets.WSO2_UPDATE_ARTIFACTS_URL != '' }}
+          # macOS-only: stock Squirrel.Mac core-app updates, served by the SAME update server —
+          # darwinUpdateService polls {updateUrl}/api/update/{darwin|darwin-arm64}/{quality}/{commit}
+          # (the server derives the response from the darwin manifest's app.commit/app.squirrel)
+          # and gets back the editor-only .app zip CDN URL. Windows/Linux never set this, so their
+          # stock update paths stay off.
+          STOCK_UPDATE_URL: ${{ secrets.WSO2_UPDATE_URL }}
+        run: |
+          chmod +x ./ci/build/update-product.sh
+          ./ci/build/update-product.sh "${{ needs.resolve-versions.outputs.integrator_version }}"
+
+      - name: Validate Xcode tools (macOS)
+        run: |
+          xcode-select -p
+          python3 -m pip install --user setuptools || true
+
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source "$HOME/.cargo/env"
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            rustup target add aarch64-apple-darwin
+          else
+            rustup target add x86_64-apple-darwin
+          fi
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm ci
+
+      - name: Mixin distro modules
+        run: |
+          node build/azure-pipelines/distro/mixin-npm.ts || true
+          node build/azure-pipelines/distro/mixin-quality.ts || true
+
+      - name: Install builtin extensions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.cache-extensions-macos.outputs.cache-hit }}" = "true" ]; then
+            echo "✅ Extensions cache hit - using shared cached extensions"
+          else
+            echo "⬇️ Downloading built-in extensions"
+            # wso2.wso2-integrator is pinned in product.json to the hand-bumped version in
+            # wi/wi-extension/package.json, which does not move when wi/** content changes.
+            # isUpToDate() (lib/vscode/build/lib/builtInExtensions.ts) compares only that version
+            # string, so a prefix-restored copy would be judged current and the vsix just built
+            # would never be unpacked. Reaching this branch means the exact key missed, so drop it
+            # and force a re-unpack.
+            rm -rf .build/builtInExtensions/wso2.wso2-integrator
+            npm run download-builtin-extensions
+          fi
+
+      - name: Build client (macOS ${{ matrix.arch }})
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run gulp vscode-darwin-${{ matrix.arch }}-min-ci
+
+      - name: Build CLI (macOS ${{ matrix.arch }})
+        run: |
+          source "$HOME/.cargo/env"
+          cd cli
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            TARGET_DIR="./target/aarch64-apple-darwin/release"
+            TARGET_TRIPLE="aarch64-apple-darwin"
+          else
+            TARGET_DIR="./target/x86_64-apple-darwin/release"
+            TARGET_TRIPLE="x86_64-apple-darwin"
+          fi
+          
+          if [ "${{ steps.cache-cli-macos.outputs.cache-hit }}" = "true" ]; then
+            echo "✅ CLI cache hit - checking for cached CLI binary"
+            if [ -f "$TARGET_DIR/code" ]; then
+              echo "Cached CLI binary found and ready to use"
+            else
+              echo "⚠️ Cache hit but binary missing - rebuilding"
+              cargo build --release --bin=code --target=$TARGET_TRIPLE
+            fi
+          else
+            echo "❌ CLI cache miss - compiling CLI"
+            cargo build --release --bin=code --target=$TARGET_TRIPLE
+          fi
+          
+          # Set CLI_BIN path relative to parent directory (after cd ..)
+          CLI_BIN="./cli/$TARGET_DIR/code"
+          cd ..
+
+          # Verify CLI binary was built
+          if [ ! -f "$CLI_BIN" ]; then
+            echo "CLI binary not found at $CLI_BIN" >&2
+            find ./cli/target -type f -name code 2>/dev/null || true
+            exit 1
+          fi
+          
+          # Get CLI app name from the source product.json
+          CLI_APP_NAME=$(node -p "require('./product.json').tunnelApplicationName")
+          
+          # Find the .app directory inside VSCode-darwin-arm64
+          APP_DIR=$(find "../VSCode-darwin-${{ matrix.arch }}" -name "*.app" -type d | head -1)
+          if [ -z "$APP_DIR" ]; then
+            echo "Error: Could not find .app directory in VSCode-darwin-${{ matrix.arch }}" >&2
+            ls -la "../VSCode-darwin-${{ matrix.arch }}/"
+            exit 1
+          fi
+          
+          # Copy CLI to build output
+          mkdir -p "$APP_DIR/Contents/Resources/app/bin"
+          cp "$CLI_BIN" "$APP_DIR/Contents/Resources/app/bin/$CLI_APP_NAME"
+          chmod +x "$APP_DIR/Contents/Resources/app/bin/$CLI_APP_NAME"
+
+      - name: Re-package with CLI (macOS ${{ matrix.arch }})
+        run: |
+          # Re-create the zip with the CLI included
+          mkdir -p ../artifacts
+          (cd .. && zip -qry "artifacts/VSCode-darwin-${{ matrix.arch }}.zip" VSCode-darwin-${{ matrix.arch }})
+
+      - name: Sign macOS application
+        run: |
+          # Find the app directory
+          APP_DIR=$(find "../VSCode-darwin-${{ matrix.arch }}" -name "*.app" -type d | head -1)
+          
+          if [ -n "$APP_DIR" ]; then
+            echo "Signing application: $APP_DIR"
+            
+            # Ad-hoc signing (for local development/testing)
+            codesign --force --deep --sign - "$APP_DIR"
+            
+            # Verify the signature
+            codesign --verify --verbose "$APP_DIR"
+            
+            echo "Application signed successfully"
+          else
+            echo "No .app directory found to sign"
+          fi
+
+      - name: Upload macOS artifacts
+        if: ${{ inputs.build_packed_installers == false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-darwin-${{ matrix.arch }}
+          path: |
+            lib/artifacts/*
+          if-no-files-found: error
+      
+      - name: Zip the artifacts and copy artifacts
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          APP_DIR=$(find "../VSCode-darwin-${{ matrix.arch }}" -name "*.app" -type d | head -1)
+          mkdir -p ../artifacts
+          (cd .. && zip -qry "artifacts/VSCode-darwin-${{ matrix.arch }}.zip" VSCode-darwin-${{ matrix.arch }})
+          cp ../artifacts/VSCode-darwin-${{ matrix.arch }}.zip ../../installers/mac/
+      # Imports the Developer ID Application cert (codesign: app bundles + DMG) into a temp
+      # keychain, then derives the identity name from the imported cert so no separate identity
+      # secret is needed. No Developer ID Installer cert: the DMG carries the app directly, and
+      # nothing here builds a .pkg for productbuild to sign.
+      - name: Import signing certificates (macOS)
+        if: ${{ inputs.build_packed_installers == true }}
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "MACOS_CERTIFICATE not set — skipping import; build.sh will ad-hoc sign (not distributable)."
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/wso2-signing.keychain-db"
+          KC_PASS="${KEYCHAIN_PASSWORD:-ci-$RANDOM-$RANDOM-$RANDOM}"
+          security create-keychain -p "$KC_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
+          # Sanity-check the decoded secret before importing: a PKCS#12 is a DER SEQUENCE, so it
+          # must start with 0x30. This separates "secret was mangled/truncated in transit" from
+          # "password does not match" — `security import` reports both as MAC verification failed.
+          check_p12() {
+            local f="$1" label="$2"
+            local size; size=$(wc -c < "$f" | tr -d ' ')
+            echo "$label: decoded $size bytes"
+            if [ "$size" -lt 100 ]; then
+              echo "::error::$label decoded to only $size bytes — the secret is empty or truncated, not base64 of a .p12"
+              exit 1
+            fi
+            if [ "$(head -c1 "$f" | od -An -tx1 | tr -d ' \n')" != "30" ]; then
+              echo "::error::$label does not look like a PKCS#12/DER file — check the secret holds base64 of a .p12 (not a .cer, and no stray characters)"
+              exit 1
+            fi
+          }
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/app_cert.p12"
+          check_p12 "$RUNNER_TEMP/app_cert.p12" "MACOS_CERTIFICATE"
+          if ! security import "$RUNNER_TEMP/app_cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+            echo "::error::Importing MACOS_CERTIFICATE failed. The file decoded correctly, so MACOS_CERTIFICATE_PASSWORD does not match this .p12."
+            exit 1
+          fi
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KEYCHAIN" >/dev/null
+          rm -f "$RUNNER_TEMP/app_cert.p12"
+          APP_ID=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          if [ -z "$APP_ID" ]; then
+            echo "No Developer ID Application identity found after import" >&2
+            exit 1
+          fi
+          echo "MAC_SIGNING_IDENTITY=$APP_ID" >> "$GITHUB_ENV"
+          echo "Imported certificate. App identity: $APP_ID"
+
+      # MAC_SIGNING_IDENTITY comes from the import step via GITHUB_ENV (derived from the
+      # imported certificate).
+
+      - name: Build macOS installer packages
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          ROOT_DIR=$(pwd)
+          echo "Root dir: ${ROOT_DIR}"
+          BALLERINA_VERSION="${{ needs.resolve-versions.outputs.ballerina_version }}"
+          BALLERINA_VERSION_FILENAME="${BALLERINA_VERSION%-*}"
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+          BALLERINA_ARCH="macos-arm"
+          JRE_PLATFORM="macos-arm-64"
+          else
+          BALLERINA_ARCH="macos"
+          JRE_PLATFORM="macos-64"
+          fi
+          BALLERINA_URL="https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${BALLERINA_VERSION}/ballerina-${BALLERINA_VERSION_FILENAME}-swan-lake-${BALLERINA_ARCH}.zip"
+          ICP_VERSION="${{ needs.resolve-versions.outputs.icp_version }}"
+          ICP_VERSION_FILENAME="${ICP_VERSION%-*}"
+          if [ "$ICP_VERSION" != "$ICP_VERSION_FILENAME" ]; then
+            ICP_VERSION_FILENAME="${ICP_VERSION_FILENAME}-SNAPSHOT"
+          fi
+          ICP_URL="https://github.com/wso2/integration-control-plane/releases/download/v${ICP_VERSION}/wso2-integration-control-plane-${ICP_VERSION}.zip"
+          JRE_VERSION="${{ needs.resolve-versions.outputs.ballerina_jre_version }}"
+          JRE_URL="https://github.com/ballerina-platform/ballerina-custom-jre/releases/download/${JRE_VERSION}/ballerina-jre-${JRE_PLATFORM}-${JRE_VERSION}.zip"
+          INTEGRATOR_VERSION="${{ needs.resolve-versions.outputs.integrator_version }}"
+          cd ./installers/mac
+          wget -O ballerina.zip "$BALLERINA_URL"
+          wget -O icp.zip "$ICP_URL"
+          wget -O jre.zip "$JRE_URL"
+          # editor-update profile: full DMG (first install) + EDITOR-ONLY Squirrel zip (§D8).
+          INSTALLER_PROFILE=editor-update ./build.sh ballerina.zip $BALLERINA_VERSION VSCode-darwin-${{ matrix.arch }}.zip icp.zip jre.zip $INTEGRATOR_VERSION ${{ matrix.arch }}
+          cd ${ROOT_DIR}
+
+      # Apple-ID (app-specific password) notarytool auth. NOTARY_APP_PASSWORD is an
+      # app-specific password generated at appleid.apple.com, not the account password.
+      - name: Notarize and staple (macOS ${{ matrix.arch }})
+        if: ${{ inputs.build_packed_installers == true }}
+        # The job's default working-directory is lib/vscode, where installers/mac does not exist —
+        # without this override the loop below finds nothing, skips everything, and exits 0: a green
+        # step that notarized nothing.
+        working-directory: .
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          # Bound through env, never expanded into the script: the version derives from
+          # component-versions.properties on whatever ref was dispatched, and this step holds
+          # notarization credentials.
+          INTEGRATOR_VERSION: ${{ needs.resolve-versions.outputs.integrator_version }}
+        run: |
+          set -euo pipefail
+          V="$INTEGRATOR_VERSION"
+          DMG="installers/mac/wso2-integrator-${V}-${{ matrix.arch }}.dmg"
+          if [ -z "$NOTARY_APPLE_ID" ] || [ -z "$NOTARY_APP_PASSWORD" ] || [ -z "$NOTARY_TEAM_ID" ]; then
+            echo "Notarization credentials not set — skipping notarization (build is signed but not notarized)."
+            exit 0
+          fi
+          # Submitting an ad-hoc signed artifact can only fail at Apple's end, so without the
+          # signing identity this build is the documented unsigned fallback — skip, don't submit.
+          if [ -z "${MAC_SIGNING_IDENTITY:-}" ]; then
+            echo "Signing identity not available — skipping notarization (unsigned fallback build)."
+            exit 0
+          fi
+          if [ ! -f "$DMG" ]; then
+            echo "::error::expected artifact missing before notarization: $DMG" >&2
+            exit 1
+          fi
+          echo "Notarizing $DMG"
+          # `notarytool submit --wait` exits 0 even when Apple returns Invalid, so without this
+          # check the run failed one line later at `stapler` with "Could not find base64 encoded
+          # ticket ... Error 65" and no hint of the cause. Read the verdict, and on anything but
+          # Accepted print Apple's per-file findings, which is the only thing that says WHY.
+          SUBMIT_JSON=$(xcrun notarytool submit "$DMG" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_APP_PASSWORD" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --wait --output-format json)
+          echo "$SUBMIT_JSON"
+          # Tab-separated, because a status can contain a space: `--wait` reports "In Progress"
+          # on timeout, and splitting on spaces would leave "Progress <uuid>" in the id, sending
+          # `notarytool log` an id it cannot use -- which `|| true` would then hide.
+          IFS=$'\t' read -r NOTARY_STATUS NOTARY_ID <<<"$(printf '%s' "$SUBMIT_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("id",""), sep="\t")')"
+          if [ "$NOTARY_STATUS" != "Accepted" ]; then
+            echo "::error::notarization returned ${NOTARY_STATUS:-no status} for $DMG" >&2
+            if [ -n "$NOTARY_ID" ]; then
+              echo "----- Apple's notarization log -----"
+              xcrun notarytool log "$NOTARY_ID" \
+                --apple-id "$NOTARY_APPLE_ID" \
+                --password "$NOTARY_APP_PASSWORD" \
+                --team-id "$NOTARY_TEAM_ID" || true
+            fi
+            exit 1
+          fi
+          xcrun stapler staple "$DMG"
+
+      # This is the only AWS consumer in the job, so the credentials go in its own `env:` rather
+      # than through configure-aws-credentials, which writes them to $GITHUB_ENV and would leave
+      # live S3 write credentials in scope for every step that follows.
+      #
+      # It fails rather than skips on a half-configured run: publish-update-source embeds
+      # app.squirrel.url into the darwin manifest regardless, so skipping here would ship a
+      # manifest pointing at an object nobody uploaded — a 404 for every macOS client at apply
+      # time, from a green build.
+      - name: Publish Squirrel.Mac update payload to update bucket
+        if: ${{ inputs.publish_update_source == true && inputs.build_packed_installers == true }}
+        working-directory: .
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          AWS_UPDATE_S3_BUCKET: ${{ secrets.AWS_UPDATE_S3_BUCKET }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${AWS_UPDATE_S3_BUCKET}" ] || missing+=("AWS_UPDATE_S3_BUCKET")
+          [ -n "${AWS_ACCESS_KEY_ID}" ] || missing+=("AWS_ACCESS_KEY_ID")
+          [ -n "${AWS_SECRET_ACCESS_KEY}" ] || missing+=("AWS_SECRET_ACCESS_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf '::error::missing required secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          V="${{ needs.resolve-versions.outputs.integrator_version }}"
+          ZIP="installers/mac/wso2-integrator-${V}-${{ matrix.arch }}-mac.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::Squirrel.Mac payload not found at $ZIP" >&2
+            exit 1
+          fi
+          # Same artifacts layout as everything else; the darwin manifest's app.squirrel.url
+          # (embedded by generate-update-manifest.mjs) points at this exact versioned CDN URL.
+          DEST="s3://${AWS_UPDATE_S3_BUCKET}/artifacts/app/${V}/"
+          aws s3 cp "$ZIP" "${DEST}wso2-integrator-${V}-${{ matrix.arch }}-mac.zip" --content-type application/zip --cache-control no-cache
+          echo "Published Squirrel.Mac payload for darwin/${{ matrix.arch }} (v${V})"
+
+      - name: Upload macOS DMG artifacts
+        if: ${{ inputs.build_packed_installers == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Product-Integrator-Darwin-DMG-${{ matrix.arch }}
+          path: |
+            installers/mac/*.dmg
+            installers/mac/*-mac.zip
+          if-no-files-found: error
+
+      - name: cosign-installer
+        if: ${{ inputs.build_packed_installers == true }}
+        uses: sigstore/cosign-installer@v3.5.0
+      - name: Sign the dmg installer
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          cosign sign-blob installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg --output-certificate installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.pem --output-signature installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sig --yes
+
+      - name: Verify signature of the dmg installer
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          # `github.repository` (not a hardcoded wso2/product-integrator) so signature verification
+          # also works on forks and the enterprise mirror, where the OIDC identity differs.
+          cosign verify-blob installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg --certificate installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.pem --signature installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sig --certificate-identity=https://github.com/${{ github.repository }}/.github/workflows/build.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+      - name: Generate Hashes for dmg installer
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          openssl dgst -sha256 -out installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg.sha256 installers/mac/wso2-integrator-${{ needs.resolve-versions.outputs.integrator_version }}-${{ matrix.arch }}.dmg
+
+      - name: Upload Signatures and Hashes for mac installers
+        if: ${{ inputs.build_packed_installers == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MAC-${{ matrix.arch }}
+          path: |
+            installers/mac/*.pem
+            installers/mac/*.sig
+            installers/mac/*.sha256
+          if-no-files-found: error
+
+  build-windows:
+    if: ${{ inputs.build_windows == true }}
+    name: Build (Windows)
+    runs-on: windows-2022
+    needs: [resolve-versions, compile]
+    defaults:
+      run:
+        working-directory: lib/vscode
+    steps:
+      - name: Enable Git long paths
+        shell: pwsh
+        working-directory: .
+        run: git config --system core.longpaths true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: lib/vscode/.nvmrc
+          cache: npm
+          cache-dependency-path: lib/vscode/package-lock.json
+
+      - name: Cache native modules (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/vscode/node_modules
+            lib/vscode/.build/node_modules_cache
+          key: native-modules-windows-${{ hashFiles('lib/vscode/package-lock.json') }}
+          restore-keys: |
+            native-modules-windows-
+
+      - name: Cache Rust toolchain (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: cargo-toolchain-windows-${{ hashFiles('lib/vscode/cli/Cargo.lock') }}
+          restore-keys: |
+            cargo-toolchain-windows-
+
+      - name: Cache CLI compilation (Windows)
+        id: cache-cli-windows
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/vscode/cli/target/
+          key: cli-windows-${{ hashFiles('patches/*.diff', 'lib/vscode/cli/Cargo.lock', 'lib/vscode/cli/src/**/*.rs', 'lib/vscode/cli/Cargo.toml') }}
+          restore-keys: |
+            cli-windows-
+
+      - name: Cache built-in extensions
+        id: cache-extensions-windows
+        uses: actions/cache@v4
+        with:
+          path: |
+            lib/vscode/.build/builtInExtensions
+            lib/vscode/.build/extensions
+          key: extensions-shared-${{ inputs.ballerina_extension_source }}-${{ needs.resolve-versions.outputs.ballerina_extension_version }}-${{ inputs.mi_extension_source }}-${{ needs.resolve-versions.outputs.mi_extension_version }}-${{ hashFiles('patches/*.diff', 'ci/build/update-product.sh', 'ci/build/component-versions.properties', 'lib/vscode/package.json', 'wi/**') }}
+          # Partial restore so a cold key doesn't mean a cold cache: this prefix is the exact key minus
+          # the file-hash component, so a patch or wi/** edit falls back to the previous run instead of
+          # re-downloading every extension.
+          #
+          # What the fallback does and does not hold fixed, since it is not uniform: Ballerina and MI
+          # have their own key fields -- they are the two with a marketplace-vs-vsix source switch, and
+          # the version came along with the switch -- so a fallback cannot cross their versions. The
+          # streaming-integrator, hurl-client and mcp-server-inspector versions live only inside the
+          # dropped hash, so a fallback CAN cross those, as it can WI's. That is safe but not free:
+          # download-builtin-extensions re-validates by version string (isUpToDate), which catches those
+          # three because their versions move when their contents do. It cannot catch WI, whose version
+          # is hand-bumped and stays constant across content changes -- hence the explicit removal in
+          # "Install builtin extensions" below.
+          restore-keys: |
+            extensions-shared-${{ inputs.ballerina_extension_source }}-${{ needs.resolve-versions.outputs.ballerina_extension_version }}-${{ inputs.mi_extension_source }}-${{ needs.resolve-versions.outputs.mi_extension_version }}-
+
+      - name: Download compilation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: compilation
+          path: lib/vscode
+
+      - name: Extract compilation output
+        shell: pwsh
+        run: tar -xzf compilation.tar.gz
+
+      - name: Download WI extension VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: wi-extension-vsix
+          path: wi/wi-extension
+
+      - name: Install Rsync (Windows)
+        shell: pwsh
+        run: |
+          choco install -y rsync  
+
+      - name: Apply patches (Windows)
+        shell: bash
+        working-directory: .
+        run: |
+          # Apply patches using git apply with lenient options
+          while IFS= read -r patch || [ -n "$patch" ]; do
+            # Trim whitespace from patch filename
+            patch=$(echo "$patch" | xargs)
+            # Skip empty lines and comments
+            [[ -z "$patch" || "$patch" =~ ^[[:space:]]*# ]] && continue
+            echo "Applying patch: $patch"
+            git apply --whitespace=fix --ignore-whitespace "patches/$patch" || \
+            git apply --reject --whitespace=fix "patches/$patch" || \
+            (echo "Warning: Failed to apply patch $patch" && exit 1)
+          done < patches/series
+
+      - name: Set Ballerina extension version
+        if: ${{ needs.resolve-versions.outputs.ballerina_extension_version != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          echo "BALLERINA_EXTENSION_VERSION=${{ needs.resolve-versions.outputs.ballerina_extension_version }}" >> "$GITHUB_ENV"
+
+      - name: Download archived Ballerina VSIX
+        if: ${{ inputs.ballerina_extension_source == 'github' && needs.resolve-versions.outputs.ballerina_extension_version != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          chmod +x ./ci/download-vsix.sh
+          BALLERINA_VSIX_PATH=$(./ci/download-vsix.sh "wso2/ballerina-vscode" "${{ needs.resolve-versions.outputs.ballerina_extension_version }}" "ballerina-${{ needs.resolve-versions.outputs.ballerina_extension_version }}.vsix" "$PWD" "${{ needs.resolve-versions.outputs.ballerina_extension_tag }}")
+          echo "BALLERINA_VSIX_PATH=${BALLERINA_VSIX_PATH}" >> "$GITHUB_ENV"
+
+      - name: Download archived MI VSIX
+        if: ${{ inputs.mi_extension_source == 'github' && needs.resolve-versions.outputs.mi_extension_version != '' }}
+        shell: bash
+        working-directory: .
+        run: |
+          chmod +x ./ci/download-vsix.sh
+          MI_VSIX_PATH=$(./ci/download-vsix.sh "wso2/mi-vscode" "${{ needs.resolve-versions.outputs.mi_extension_version }}" "micro-integrator-${{ needs.resolve-versions.outputs.mi_extension_version }}.vsix" "$PWD" "${{ needs.resolve-versions.outputs.mi_extension_tag }}")
+          echo "MI_VSIX_PATH=${MI_VSIX_PATH}" >> "$GITHUB_ENV"
+
+      # Deliberately after the cache steps: a timestamped version in
+      # hashFiles('ci/build/component-versions.properties') would bust the extensions cache every run.
+      - name: Download stamped versions
+        uses: actions/download-artifact@v4
+        with:
+          name: build-versions
+          path: .
+
+      - name: Update product.json and branding
+        shell: bash
+        working-directory: .
+        env:
+          # Component update mechanism (manifest server + verification key). Empty when unset →
+          # in-app component updates disabled. STOCK_UPDATE_URL is intentionally NOT set here so
+          # the stock (Squirrel/Win/Linux) update path stays off outside the macOS job.
+          WSO2_UPDATE_URL: ${{ secrets.WSO2_UPDATE_URL }}
+          WSO2_UPDATE_PUBLIC_KEY: ${{ secrets.WSO2_UPDATE_PUBLIC_KEY }}
+          # See the macOS job for why this is gated on mirroring as well as on the key.
+          WSO2_UPDATE_REQUIRE_ARTIFACT_SIGNATURE: ${{ secrets.WSO2_UPDATE_PUBLIC_KEY != '' && secrets.WSO2_UPDATE_ARTIFACTS_URL != '' }}
+        run: |
+          chmod +x ./ci/build/update-product.sh
+          ./ci/build/update-product.sh "${{ needs.resolve-versions.outputs.integrator_version }}"
+
+      - name: Install Rust toolchain (Windows)
+        shell: pwsh
+        run: |
+          # Download and install Rust
+          Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile "rustup-init.exe"
+          ./rustup-init.exe -y --default-toolchain stable
+          # Add Rust to PATH for this session
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+
+      - name: Install OpenSSL (Windows)
+        shell: pwsh
+        run: |
+          # A non-zero exit from a native command is not an error to PowerShell by default, so a
+          # failed update would otherwise fall through to bootstrap and install and leave the step
+          # green on a stale checkout — the exact failure this step is meant to prevent.
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+
+          # Install vcpkg if not already present, otherwise update it.
+          # The repository and executable must move together: a cached vcpkg.exe can be too old to
+          # understand the schema used by the freshly pulled scripts/vcpkg-tools.json.
+          if (Test-Path "C:\vcpkg\.git") {
+            Write-Host "vcpkg already cloned, fetching latest..."
+            cd C:\vcpkg
+            # --ff-only refuses to merge, so a diverged or detached preinstalled checkout fails
+            # here. Re-clone instead of aborting: the runner image's vcpkg is not ours to repair,
+            # and a clean clone reaches the same state.
+            try {
+              git fetch origin
+              git pull --ff-only origin master
+            } catch {
+              Write-Host "Could not fast-forward the existing vcpkg checkout; re-cloning. $_"
+              cd C:\
+              Remove-Item -Recurse -Force C:\vcpkg
+              git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+              cd C:\vcpkg
+            }
+          } else {
+            Write-Host "Cloning vcpkg..."
+            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+            cd C:\vcpkg
+          }
+          # Always rebuild the executable after moving the checkout. This is idempotent and avoids
+          # combining a persisted, old executable with current registry/tool metadata.
+          .\bootstrap-vcpkg.bat -disableMetrics
+          # Install OpenSSL (vcpkg skips if already installed)
+          .\vcpkg.exe install openssl:x64-windows-static
+          # Set environment variables for OpenSSL
+          $env:VCPKG_ROOT = "C:\vcpkg"
+          $env:OPENSSL_DIR = "C:\vcpkg\installed\x64-windows-static"
+          # Make environment variables persistent for subsequent steps
+          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+          echo "OPENSSL_DIR=C:\vcpkg\installed\x64-windows-static" >> $env:GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=C:\vcpkg\installed\x64-windows-static\lib" >> $env:GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=C:\vcpkg\installed\x64-windows-static\include" >> $env:GITHUB_ENV
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # `npm ci` runs postinstall (build/npm/postinstall.ts), which npm-installs each
+          # bundled/.vscode extension. On GitHub-hosted runners these sub-installs intermittently
+          # fail on transient registry/network hiccups, failing the whole build. Retry a few times.
+          $ok = $false
+          for ($i = 1; $i -le 3; $i++) {
+            npm ci
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "npm ci failed (attempt $i/3); retrying in 20s..."
+            Start-Sleep -Seconds 20
+          }
+          if (-not $ok) { Write-Error "npm ci failed after 3 attempts"; exit 1 }
+
+      - name: Mixin distro modules
+        run: |
+          node build/azure-pipelines/distro/mixin-npm.ts || true
+          node build/azure-pipelines/distro/mixin-quality.ts || true
+
+      - name: Install builtin extensions
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.cache-extensions-windows.outputs.cache-hit }}" = "true" ]; then
+            echo "✅ Extensions cache hit - using shared cached extensions"
+          else
+            echo "⬇️ Downloading built-in extensions"
+            # wso2.wso2-integrator is pinned in product.json to the hand-bumped version in
+            # wi/wi-extension/package.json, which does not move when wi/** content changes.
+            # isUpToDate() (lib/vscode/build/lib/builtInExtensions.ts) compares only that version
+            # string, so a prefix-restored copy would be judged current and the vsix just built
+            # would never be unpacked. Reaching this branch means the exact key missed, so drop it
+            # and force a re-unpack.
+            rm -rf .build/builtInExtensions/wso2.wso2-integrator
+            npm run download-builtin-extensions
+          fi
+
+      - name: Download exlporer Dll
+        shell: pwsh
+        run: node build/win32/explorer-dll-fetcher.ts .build/win32/appx
+
+      - name: Build client (Windows)
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # patchWin32DependenciesTask (rcedit re-branding) shells out to signtool.exe
+          # to strip/verify Authenticode signatures. signtool ships with the Windows SDK
+          # but is not on PATH on GitHub-hosted runners, so prepend the newest SDK bin dir
+          # (self-hosted runners already have it on PATH; the pinned version differs).
+          # Sorted by parsed SDK version, not by name: string ordering ranks 10.0.9... above
+          # 10.0.10..., which would pick an older signtool once two SDKs are installed.
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending | Select-Object -First 1
+          if ($signtool) {
+            $env:PATH = "$($signtool.DirectoryName);$env:PATH"
+            Write-Host "Added Windows SDK to PATH: $($signtool.DirectoryName)"
+          } else {
+            Write-Host "WARNING: signtool.exe not found under Windows Kits; build may fail in patchWin32DependenciesTask"
+          }
+          npm run gulp "vscode-win32-x64-min-ci"
+
+      - name: Build CLI (Windows)
+        shell: pwsh
+        env:
+          VCPKG_ROOT: C:\vcpkg
+          OPENSSL_DIR: C:\vcpkg\installed\x64-windows-static
+          OPENSSL_LIB_DIR: C:\vcpkg\installed\x64-windows-static\lib
+          OPENSSL_INCLUDE_DIR: C:\vcpkg\installed\x64-windows-static\include
+          OPENSSL_STATIC: 1
+        run: |
+          # Add Rust to PATH
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+          cd cli
+          
+          if ("${{ steps.cache-cli-windows.outputs.cache-hit }}" -eq "true") {
+            Write-Host "✅ CLI cache hit - checking for cached CLI binary"
+            if (Test-Path "./target/release/code.exe") {
+              Write-Host "Cached CLI binary found and ready to use"
+            } else {
+              Write-Host "⚠️ Cache hit but binary missing - rebuilding"
+              cargo build --release --bin=code
+            }
+          } else {
+            Write-Host "❌ CLI cache miss - compiling CLI"
+            cargo build --release --bin=code
+          }
+          
+          # Verify CLI binary was built
+          if (-not (Test-Path "./target/release/code.exe")) {
+            Write-Host "CLI binary not found at ./target/release/code.exe" -ForegroundColor Red
+            Get-ChildItem -Path ./target -Recurse -Name "code.exe" -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+      - name: Mix in built CLI into client (Windows)
+        shell: pwsh
+        run: |
+          cd cli
+          $cliBin = "./target/release/code.exe"
+          
+          # Get CLI app name from source product.json (not from app bundle)
+          $productJson = Get-Content "../product.json" | ConvertFrom-Json
+          $cliAppName = $productJson.tunnelApplicationName + ".exe"
+          
+          # Create bin directory and copy CLI
+          $binDir = "../VSCode-win32-x64/bin"
+          New-Item -ItemType Directory -Path $binDir -Force
+          Copy-Item $cliBin "$binDir/$cliAppName"
+
+      - name: Re-package with CLI (Windows)
+        shell: pwsh
+        run: |
+          # Re-create the zip with the CLI included
+          mkdir -p ../artifacts
+          $archivePath = "../artifacts/VSCode-win32-x64.zip"
+          Remove-Item $archivePath -ErrorAction SilentlyContinue
+          Compress-Archive -Path ../VSCode-win32-x64/* -DestinationPath $archivePath -Force
+
+      - name: Upload Windows artifacts
+        if: ${{ inputs.build_packed_installers == false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-win32
+          path: |
+            lib/artifacts/*
+          if-no-files-found: error
+      
+      - name: Copy Integrator artifact to build directory
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cp ../artifacts/VSCode-win32-x64.zip ../../installers/windows/
+      - name: Exclude build workspace from Windows Defender
+        if: ${{ inputs.build_packed_installers == true }}
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\installers\windows"
+      - name: Enable long paths (Windows)
+        if: ${{ inputs.build_packed_installers == true }}
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+      - name: Build Windows installer packages
+        if: ${{ inputs.build_packed_installers == true }}
+        shell: pwsh
+        run: |
+          cd ..\..
+          $ROOT_DIR = Get-Location
+          Write-Host "Root dir: $ROOT_DIR"
+          $BALLERINA_VERSION = "${{ needs.resolve-versions.outputs.ballerina_version }}"
+          $BALLERINA_VERSION_FILENAME = $BALLERINA_VERSION -replace '-.*$', ''
+          $BALLERINA_URL = "https://github.com/ballerina-platform/ballerina-distribution/releases/download/v${BALLERINA_VERSION}/ballerina-${BALLERINA_VERSION_FILENAME}-swan-lake-windows.zip"
+          $ICP_VERSION = "${{ needs.resolve-versions.outputs.icp_version }}"
+          $ICP_VERSION_FILENAME = $ICP_VERSION -replace '-.*$', ''
+          if ($ICP_VERSION -ne $ICP_VERSION_FILENAME) {
+            $ICP_VERSION_FILENAME = "${ICP_VERSION_FILENAME}-SNAPSHOT"
+          }
+          $ICP_URL = "https://github.com/wso2/integration-control-plane/releases/download/v${ICP_VERSION}/wso2-integration-control-plane-${ICP_VERSION}.zip"
+          $JRE_VERSION = "${{ needs.resolve-versions.outputs.ballerina_jre_version }}"
+          $JRE_URL = "https://github.com/ballerina-platform/ballerina-custom-jre/releases/download/${JRE_VERSION}/ballerina-jre-win-64-${JRE_VERSION}.zip"
+          $INTEGRATOR_VERSION = "${{ needs.resolve-versions.outputs.integrator_version }}"
+          cd .\installers\windows
+          Invoke-WebRequest -Uri $BALLERINA_URL -OutFile "ballerina.zip"
+          Invoke-WebRequest -Uri $ICP_URL -OutFile "icp.zip"
+          Invoke-WebRequest -Uri $JRE_URL -OutFile "jre.zip"
+          # Full first-install MSI (editor + Ballerina + ICP + JRE) -> wso2-integrator-<v>.msi
+          $env:INSTALLER_PROFILE = "full"
+          .\build.bat .\ballerina.zip $BALLERINA_VERSION .\VSCode-win32-x64.zip .\icp.zip .\jre.zip $INTEGRATOR_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "full MSI build failed" }
+          # Editor-only update MSI (§D8) -> wso2-integrator-<v>-update.msi. Ballerina is dropped;
+          # the client seeds/resolves it from the per-user data folder so the upgrade can't strand it.
+          $env:INSTALLER_PROFILE = "editor-update"
+          .\build.bat .\ballerina.zip $BALLERINA_VERSION .\VSCode-win32-x64.zip .\icp.zip .\jre.zip $INTEGRATOR_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "editor-update MSI build failed" }
+          Remove-Item Env:\INSTALLER_PROFILE
+
+      - name: Upload Windows artifacts
+        if: ${{ inputs.build_packed_installers == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Product-Integrator-Windows
+          path: |
+            installers\windows\WixPackage\bin\x64\Release\en-US\*.msi
+          if-no-files-found: error
+      
+      - name: cosign-installer
+        if: ${{ inputs.build_packed_installers == true }}
+        uses: sigstore/cosign-installer@v3.5.0
+      # Both MSIs are signed: the full first-install installer AND the small editor-only
+      # `-update` MSI the in-place update mechanism downloads (§D8).
+      - name: Sign the msi installers
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          $V = "${{ needs.resolve-versions.outputs.integrator_version }}"
+          foreach ($name in @("wso2-integrator-$V", "wso2-integrator-$V-update")) {
+            $msi = "installers\windows\WixPackage\bin\x64\Release\en-US\$name.msi"
+            cosign sign-blob $msi --output-certificate "installers\windows\$name.msi.pem" --output-signature "installers\windows\$name.msi.sig" --yes
+            if ($LASTEXITCODE -ne 0) { throw "cosign sign-blob failed for $name.msi" }
+          }
+      - name: Verify signatures of the msi installers
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          $V = "${{ needs.resolve-versions.outputs.integrator_version }}"
+          foreach ($name in @("wso2-integrator-$V", "wso2-integrator-$V-update")) {
+            $msi = "installers\windows\WixPackage\bin\x64\Release\en-US\$name.msi"
+            cosign verify-blob $msi --certificate "installers\windows\$name.msi.pem" --signature "installers\windows\$name.msi.sig" --certificate-identity=https://github.com/${{ github.repository }}/.github/workflows/build.yml@${{ github.ref }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+            if ($LASTEXITCODE -ne 0) { throw "cosign verify-blob failed for $name.msi" }
+          }
+
+
+      - name: Generate Hashes for msi installers
+        if: ${{ inputs.build_packed_installers == true }}
+        run: |
+          cd ../..
+          $V = "${{ needs.resolve-versions.outputs.integrator_version }}"
+          foreach ($name in @("wso2-integrator-$V", "wso2-integrator-$V-update")) {
+            openssl dgst -sha256 -out "installers\windows\$name.msi.sha256" "installers\windows\WixPackage\bin\x64\Release\en-US\$name.msi"
+          }
+
+      - name: Upload Signatures and Hashes for msi installer
+        if: ${{ inputs.build_packed_installers == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MSI
+          path: |
+            installers\windows\*.pem
+            installers\windows\*.sig
+            installers\windows\*.sha256
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [resolve-versions, compile, build-macos, build-windows, smoke-test, smoke-test-windows]
+    if: always() && (needs.compile.result == 'success') && (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') && (needs.smoke-test-windows.result == 'success' || needs.smoke-test-windows.result == 'skipped') && (inputs.build_packed_installers == false) && (inputs.publish_tag == '')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Create unified release artifact
+        run: |
+          mkdir -p release-artifacts
+          
+          # Copy Linux artifacts if available
+          if [ -d "all-artifacts/artifacts-linux" ]; then
+            cp all-artifacts/artifacts-linux/* release-artifacts/ || true
+          fi
+          
+          # Copy macOS artifacts if available
+          if [ -d "all-artifacts/artifacts-darwin-x64" ]; then
+            cp all-artifacts/artifacts-darwin-x64/* release-artifacts/ || true
+          fi
+          if [ -d "all-artifacts/artifacts-darwin-arm64" ]; then
+            cp all-artifacts/artifacts-darwin-arm64/* release-artifacts/ || true
+          fi
+          
+          # Copy Windows artifacts if available
+          if [ -d "all-artifacts/artifacts-win32" ]; then
+            cp all-artifacts/artifacts-win32/* release-artifacts/ || true
+          fi
+          
+          # List all created artifacts
+          echo "Created release artifacts:"
+          ls -la release-artifacts/
+
+      - name: Upload unified release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wso2-integrator-release
+          path: release-artifacts/*
+          if-no-files-found: warn
+
+  publish-github-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [resolve-versions, compile, build-macos, build-windows, smoke-test, smoke-test-windows]
+    # A published tag is permanent and user-visible, so every platform that was asked for must have
+    # succeeded. `skipped` is allowed for build-macos/build-windows because they are gated on their
+    # own inputs, and for smoke-test/smoke-test-windows because run_smoke_tests can turn them off
+    # deliberately; a *failed* job of any of these skips this job, and the run is already red from
+    # that failure.
+    #
+    # The smoke_tests_required == false branch (the nightly) is deliberately redundant with the
+    # `allow_failure` passed to smoke-test.yml: continue-on-error there should already make the
+    # called workflow — and so `needs.smoke-test.result` here — conclude `success` even when a test
+    # fails, which would leave this clause unexercised. It is kept as the belt to that pair of braces
+    # because the two live in different files and the failure mode is silent: if the conclusion ever
+    # propagates as `failure` instead (a GitHub behaviour change, or a smoke-test job that is
+    # cancelled rather than failed, which continue-on-error does not cover), the nightly would stop
+    # publishing without anything saying why. Do not delete one half without re-testing the other.
+    if: |
+      always() &&
+      (needs.compile.result == 'success') &&
+      (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped') &&
+      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
+      (inputs.smoke_tests_required == false || (
+        (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
+        (needs.smoke-test-windows.result == 'success' || needs.smoke-test-windows.result == 'skipped')
+      )) &&
+      (inputs.publish_tag != '') &&
+      (inputs.build_packed_installers == true)
+    steps:
+      - name: Download Linux DEB artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Product-Integrator-DEB
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Signatures and Hashes (DEB)
+        uses: actions/download-artifact@v4
+        with:
+          name: Signatures-and-Hashes-DEB
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Linux RPM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Product-Integrator-RPM
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Signatures and Hashes (RPM)
+        uses: actions/download-artifact@v4
+        with:
+          name: Signatures-and-Hashes-RPM
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Linux TAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Product-Integrator-TAR
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download macOS DMG artifacts (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Product-Integrator-Darwin-DMG-arm64
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download macOS DMG artifacts (x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Product-Integrator-Darwin-DMG-x64
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Signatures and Hashes (MAC arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MAC-arm64
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Signatures and Hashes (MAC x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MAC-x64
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Windows MSI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Product-Integrator-Windows
+          path: release-files/
+        continue-on-error: true
+
+      - name: Download Signatures and Hashes (MSI)
+        uses: actions/download-artifact@v4
+        with:
+          name: Signatures-and-Hashes-MSI
+          path: release-files/
+        continue-on-error: true
+
+      # The WI extension ships as a release asset: for nightly, the rolling tag is how the vsix is
+      # distributed (there is no Marketplace / Open VSX publish).
+      - name: Download WI extension VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: wi-extension-vsix
+          path: release-files/
+        continue-on-error: true
+
+      # The caller chose the tag; all that is derived here is the display name.
+      - name: Resolve release name
+        id: release-tag
+        shell: bash
+        env:
+          PUBLISH_TAG: ${{ inputs.publish_tag }}
+          INTEGRATOR_VERSION: ${{ needs.resolve-versions.outputs.integrator_version }}
+        run: |
+          if [ "${PUBLISH_TAG}" = "nightly" ]; then
+            echo "name=WSO2 Integrator Nightly (${INTEGRATOR_VERSION})" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=WSO2 Integrator ${PUBLISH_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: List release files
+        env:
+          PUBLISH_TAG: ${{ inputs.publish_tag }}
+        run: |
+          echo "Files to be released under tag ${PUBLISH_TAG}:"
+          ls -la release-files/ || echo "No release files found"
+
+      # Every download above is `continue-on-error` (a skipped platform produces no artifact), so a
+      # missing artifact would otherwise publish silently. Assert that everything the inputs asked
+      # for actually arrived, and fail the run rather than ship a partial release.
+      - name: Verify release assets
+        shell: bash
+        env:
+          BUILD_MACOS: ${{ inputs.build_macos }}
+          BUILD_WINDOWS: ${{ inputs.build_windows }}
+        run: |
+          shopt -s nullglob
+          missing=()
+          require() {
+            local label="$1"; shift
+            local found=("$@")
+            [ ${#found[@]} -gt 0 ] || missing+=("${label}")
+          }
+
+          require "Linux .deb"          release-files/*.deb
+          require "Linux .rpm"          release-files/*.rpm
+          require "Linux .tar.gz"       release-files/*.tar.gz
+          require "WI extension .vsix"  release-files/*.vsix
+          if [ "${BUILD_MACOS}" = "true" ]; then
+            require "macOS arm64 .dmg"  release-files/*arm64.dmg
+            require "macOS x64 .dmg"    release-files/*x64.dmg
+          fi
+          if [ "${BUILD_WINDOWS}" = "true" ]; then
+            require "Windows .msi"      release-files/*.msi
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Error: refusing to publish an incomplete release. Missing:" >&2
+            printf '  - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          echo "All expected release assets are present."
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.publish_tag }}
+          name: ${{ steps.release-tag.outputs.name }}
+          # Callers that prepared a branch pass its SHA as both `ref` and `target_commitish`, so the
+          # tag points at the very commit that was compiled rather than at the ref the workflow was
+          # started from.
+          target_commitish: ${{ inputs.target_commitish != '' && inputs.target_commitish || github.sha }}
+          draft: false
+          prerelease: ${{ inputs.is_prerelease }}
+          # Only a non-pre-release becomes the repository Latest.
+          make_latest: ${{ !inputs.is_prerelease }}
+          files: release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A `nightly*` tag is rolling: every build's filenames carry a fresh timestamp, so the upload
+      # above adds to the previous build's assets instead of replacing them. This step verifies the
+      # new set fully landed, moves the tag to the current commit (action-gh-release only creates a
+      # tag that doesn't yet exist), then removes the superseded assets — in that order, so the
+      # release is never left incomplete or empty.
+      #
+      # The gate is a prefix match, not `== 'nightly'`, so a disposable `nightly-test` dispatch can
+      # exercise the delete loop without touching the production tag. It stays false for the other
+      # two callers: release.yml passes `v<version>` and dev-build.yml passes ''.
+      #
+      # PUBLISH_TAG is bound through `env`, not interpolated directly, so a tag value containing
+      # shell syntax can't change the commands being run.
+      - name: Roll the nightly tag and drop superseded assets
+        if: ${{ startsWith(inputs.publish_tag, 'nightly') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISH_TAG: ${{ inputs.publish_tag }}
+          TARGET_SHA: ${{ inputs.target_commitish != '' && inputs.target_commitish || github.sha }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          published=$(for file in release-files/*; do basename "${file}"; done | sort)
+          if [ -z "${published}" ]; then
+            echo "Error: no files were published, so there is nothing to supersede." >&2
+            exit 1
+          fi
+          attached=$(gh release view "${PUBLISH_TAG}" --json assets --jq '.assets[].name' \
+            | sed '/^$/d' | sort)
+
+          # An upload that silently dropped a file would otherwise be "fixed" by deleting the
+          # previous, complete set. Bail out and leave both sets attached instead.
+          missing=$(comm -23 <(printf '%s\n' "${published}") <(printf '%s\n' "${attached}"))
+          if [ -n "${missing}" ]; then
+            echo "Error: these files did not reach the ${PUBLISH_TAG} release:" >&2
+            while IFS= read -r name; do
+              echo "  - ${name}" >&2
+            done <<< "${missing}"
+            echo "       Keeping the previous assets; the release still holds a full set." >&2
+            exit 1
+          fi
+
+          gh api -X PATCH "repos/${GH_REPO}/git/refs/tags/${PUBLISH_TAG}" \
+            -f sha="${TARGET_SHA}" -F force=true >/dev/null
+          echo "${PUBLISH_TAG} now tags ${TARGET_SHA}."
+
+          superseded=$(comm -13 <(printf '%s\n' "${published}") <(printf '%s\n' "${attached}"))
+          if [ -z "${superseded}" ]; then
+            echo "No superseded assets to remove."
+            exit 0
+          fi
+          while IFS= read -r name; do
+            gh release delete-asset "${PUBLISH_TAG}" "${name}" --yes
+            echo "Removed superseded asset ${name}"
+          done <<< "${superseded}"
+
+  publish-update-source:
+    name: Publish Update Source
+    runs-on: ubuntu-latest
+    # Shared with the Publish Component Updates workflow: both read-modify-write the same
+    # index.json, and two at once would drop one of the two lines they repointed.
+    concurrency:
+      group: update-index-${{ inputs.channel || 'insider' }}
+      cancel-in-progress: false
+    needs: [resolve-versions, publish-github-release]
+    if: |
+      always() &&
+      (inputs.publish_update_source == true) &&
+      (needs.publish-github-release.result == 'success') &&
+      (inputs.publish_tag != '') &&
+      (inputs.build_packed_installers == true)
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      # New builds publish to the channel chosen at dispatch (default insider); the
+      # promote-channel workflow later copies a source document down the ladder.
+      CHANNEL: ${{ inputs.channel || 'insider' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # This job only reads the repo; later steps hold signing and cloud credentials, so the
+          # checkout token must not persist into .git/config.
+          persist-credentials: false
+          # Same ref every other job builds from. A caller that stamps a version branch passes it
+          # as `ref`, and the source document is generated from ci/build/* plus
+          # component-versions.properties — so checking out anything else would describe a build
+          # that was never produced.
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The WI extension is built in-repo (no public download URL); its VSIX is mirrored to the
+      # update bucket from this artifact (config `sourceFile`).
+      - name: Download WI extension VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: wi-extension-vsix
+          path: wi/wi-extension
+
+      # ONE document describes every platform this run actually built. A target that was not built
+      # is left out entirely rather than published with URLs to release assets that never existed.
+      - name: Resolve published targets
+        id: targets
+        shell: bash
+        run: |
+          TARGETS=()
+          if [ "${{ inputs.build_macos }}" = "true" ]; then
+            TARGETS+=("darwin-arm64" "darwin-x64")
+          fi
+          if [ "${{ inputs.build_windows }}" = "true" ]; then
+            TARGETS+=("win32-x64")
+          fi
+          if [ "${{ inputs.build_linux }}" = "true" ]; then
+            TARGETS+=("linux-x64")
+          fi
+          if [ ${#TARGETS[@]} -eq 0 ]; then
+            echo "No platforms were built; nothing to publish."
+            echo "targets=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf -v JOINED '%s,' "${TARGETS[@]}"
+          echo "targets=${JOINED%,}" >> "$GITHUB_OUTPUT"
+          echo "publishing targets: ${JOINED%,}"
+
+      # WSO2_UPDATE_ARTIFACTS_URL = the CDN base fronting s3://$AWS_UPDATE_S3_BUCKET/artifacts.
+      # When set, every artifact is mirrored into artifacts-mirror/ and the document points clients
+      # at the CDN only — no open-vsx/github in client URLs.
+      - name: Generate source document
+        if: ${{ steps.targets.outputs.targets != '' }}
+        env:
+          # Lets the generator hash release assets on a private repo (the enterprise mirror);
+          # public repos serve them unauthenticated and ignore this.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A UTC clock read, not the run number: publish-components.yml writes the same channels with
+          # independent numbering, and the promotion guard compares sequences per line.
+          SEQUENCE=$(date -u +%s)
+          echo "SEQUENCE=${SEQUENCE}" >> "$GITHUB_ENV"
+          echo "document sequence ${SEQUENCE} (run ${{ github.run_number }})"
+
+          MIRROR_ARGS=()
+          if [ -n "${{ secrets.WSO2_UPDATE_ARTIFACTS_URL }}" ]; then
+            MIRROR_ARGS=(--artifacts-base "${{ secrets.WSO2_UPDATE_ARTIFACTS_URL }}" --mirror-dir artifacts-mirror)
+          fi
+          node ci/build/generate-update-manifest.mjs \
+            --targets "${{ steps.targets.outputs.targets }}" \
+            --sequence "${SEQUENCE}" \
+            --app-version "${{ needs.resolve-versions.outputs.integrator_version }}" \
+            --app-release-base "https://github.com/${{ github.repository }}/releases/download/${{ inputs.publish_tag }}" \
+            --app-commit "${{ github.sha }}" \
+            --source-flavors "wso2.ballerina=${{ inputs.ballerina_extension_source || 'marketplace' }},wso2.micro-integrator=${{ inputs.mi_extension_source || 'marketplace' }}" \
+            "${MIRROR_ARGS[@]}" \
+            --out source.json
+          echo "----- source.json -----"
+          cat source.json
+
+      - name: cosign-installer
+        if: ${{ steps.targets.outputs.targets != '' }}
+        uses: sigstore/cosign-installer@v3
+
+      # The public half is DERIVED from the signing key rather than configured separately. A second
+      # public-key secret can only agree or disagree with this one, and when it disagreed the
+      # signatures still verified in-run -- so the mismatch that matters (pinned key vs the key that
+      # actually signs) was the one the old check could not see.
+      - name: Derive the signing public key
+        if: ${{ steps.targets.outputs.targets != '' }}
+        run: |
+          set -euo pipefail
+          cosign public-key --key env://COSIGN_PRIVATE_KEY > signing.pub
+          grep -q 'BEGIN PUBLIC KEY' signing.pub
+          echo "derived the public half of COSIGN_PRIVATE_KEY"
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Sign source document
+        if: ${{ steps.targets.outputs.targets != '' }}
+        run: cosign sign-blob --key env://COSIGN_PRIVATE_KEY source.json --output-signature source.json.sig --yes
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Verify source signature
+        if: ${{ steps.targets.outputs.targets != '' }}
+        run: |
+          cosign verify-blob --key signing.pub --signature source.json.sig source.json
+
+      - name: Upload source artifact
+        if: ${{ steps.targets.outputs.targets != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-source-${{ env.CHANNEL }}
+          path: |
+            source.json
+            source.json.sig
+
+      - name: Login to AWS
+        if: ${{ steps.targets.outputs.targets != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      # Every mirrored artifact is cosigned so the CLIENT can verify provenance per artifact,
+      # independently of who described it. That is what allows the source document to be composed
+      # per client by the server without ever putting the signing key on the update server.
+      - name: Sign mirrored artifacts
+        if: ${{ steps.targets.outputs.targets != '' }}
+        run: |
+          if [ ! -d artifacts-mirror ]; then
+            echo "No mirrored artifacts to sign."
+            exit 0
+          fi
+          # Sign the STATEMENTS the generator wrote, not the artifacts themselves. A signature over
+          # artifact bytes proves only "WSO2 produced this file", which would leave the document free
+          # to offer an old signed artifact under a new version label; the statement binds
+          # id + version + sha256 (+ requires) so the client can check the claim it was given.
+          # -print0/-d '' so a path containing spaces or newlines cannot split into two arguments.
+          find artifacts-mirror -type f -name '*.statement.json' -print0 | while IFS= read -r -d '' file; do
+            cosign sign-blob --key env://COSIGN_PRIVATE_KEY "${file}" --output-signature "${file}.sig" --yes
+            # Verify immediately: a signature that cannot be checked here would ship as one the
+            # client rejects, turning a signing misconfiguration into a failed update for users.
+            cosign verify-blob --key signing.pub --signature "${file}.sig" "${file}"
+            echo "signed $(basename "${file}")"
+          done
+          # Every mirrored artifact must have one: an unsigned artifact would be served with a
+          # statement URL that 404s, which the client treats as a hard failure.
+          artifacts=$(find artifacts-mirror -type f ! -name '*.statement.json' ! -name '*.sig' | wc -l | tr -d ' ')
+          statements=$(find artifacts-mirror -type f -name '*.statement.json' | wc -l | tr -d ' ')
+          echo "artifacts=${artifacts} statements=${statements}"
+          if [ "${artifacts}" != "${statements}" ]; then
+            echo "Error: every mirrored artifact needs a signed statement (${artifacts} artifacts, ${statements} statements)." >&2
+            exit 1
+          fi
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Upload mirrored artifacts to update bucket
+        if: ${{ steps.targets.outputs.targets != '' }}
+        run: |
+          if [ -d artifacts-mirror ]; then
+            aws s3 cp artifacts-mirror/ "s3://${{ secrets.AWS_UPDATE_S3_BUCKET }}/artifacts/" --recursive
+          else
+            echo "WSO2_UPDATE_ARTIFACTS_URL unset — no mirrored artifacts; the document points at source URLs."
+          fi
+
+      - name: Upload source document to update bucket
+        if: ${{ steps.targets.outputs.targets != '' }}
+        env:
+          APP_VERSION: ${{ needs.resolve-versions.outputs.integrator_version }}
+          LINE_SELECTOR: ${{ inputs.update_line_selector }}
+        run: |
+          set -euo pipefail
+          # The server reads these; clients never do. Keep the manifests/ prefix PRIVATE — a publicly
+          # readable source document would let a client bypass the server and with it the
+          # kill-switch, rollout and entitlement decisions.
+          DEST="s3://${{ secrets.AWS_UPDATE_S3_BUCKET }}/manifests/${CHANNEL}/"
+
+          # Published under this release's own name, so a newer release never overwrites the document an
+          # older line is still served from.
+          DOC="source-${APP_VERSION}.json"
+          aws s3 cp source.json "${DEST}${DOC}" --content-type application/json --cache-control no-cache
+          aws s3 cp source.json.sig "${DEST}${DOC}.sig" --content-type text/plain --cache-control no-cache
+
+          # Default to this build's own line, so an ordinary release needs no extra input.
+          SELECTOR="${LINE_SELECTOR}"
+          if [ -z "${SELECTOR}" ]; then
+            SELECTOR="$(printf '%s' "${APP_VERSION}" | awk -F. '{print $1"."$2".x"}')"
+          fi
+
+          # The index is small, unsigned and hand-editable, so a read-modify-write is safe here in a way
+          # rewriting a signed document is not. The guards live in the script, shared with
+          # publish-components.yml so the two publishers cannot drift apart.
+          if aws s3 cp "${DEST}index.json" index.json 2>/dev/null; then
+            echo "Existing index:"; cat index.json
+          else
+            echo '{"schemaVersion":1,"entries":[]}' > index.json
+            echo "No index yet; creating one."
+          fi
+          # The regression guard needs the sequence the line serves TODAY, read from the document
+          # its current index entry names. Without it the guard is inert and a publish could
+          # silently repoint the line to an older document.
+          CURRENT_ARGS=()
+          CURRENT_DOC=$(python3 -c "
+          import json,sys
+          entries = json.load(open('index.json')).get('entries', [])
+          print(next((e.get('manifest','') for e in entries if e.get('match') == sys.argv[1]), ''))
+          " "${SELECTOR}")
+          if [ -n "${CURRENT_DOC}" ] && aws s3 cp "${DEST}${CURRENT_DOC}" current-doc.json 2>/dev/null; then
+            CURRENT_SEQ=$(python3 -c "import json;print(json.load(open('current-doc.json')).get('sequence', 0))")
+            CURRENT_ARGS=(--current-sequence "${CURRENT_SEQ}")
+            echo "line ${SELECTOR} currently serves ${CURRENT_DOC} (sequence ${CURRENT_SEQ})"
+          fi
+          python3 ci/build/upsert-source-index.py \
+            --index index.json \
+            --selector "${SELECTOR}" \
+            --manifest "${DOC}" \
+            --sequence "${SEQUENCE}" \
+            "${CURRENT_ARGS[@]}"
+          aws s3 cp index.json "${DEST}index.json" --content-type application/json --cache-control no-cache
+          echo "Published ${CHANNEL} ${DOC} (sequence ${SEQUENCE}, targets ${{ steps.targets.outputs.targets }}) serving ${SELECTOR}"

@@ -39,8 +39,6 @@ ARCH="$7"
 BALLERINA_ASSETS_DIR="$WORK_DIR/../assets/ballerina"
 ICP_ASSETS_DIR="$WORK_DIR/../assets/icp"
 
-OUTPUT_PKG="WSO2_Integrator.pkg"
-BUNDLE_IDENTIFIER="com.wso2.integrator"
 EXTRACTION_TARGET="$WORK_DIR/payload"
 
 # Extract wso2 zip
@@ -190,46 +188,229 @@ rm -rf "$ICP_UPDATES_TEMP"
 
 chmod +x "$ICP_TARGET/bin"/*
 
-# Modify icp.sh to use the JRE from shared dependencies directory
+# Make icp.sh resolve the JVM env-aware (§D8): prefer the resolved JDK home advertised by the
+# product runtime environment (WSO2_INTEGRATOR_JRE_HOME — set once ICP/JRE are seeded to the data
+# folder), else fall back to the JRE bundled next to ICP (../../dependencies). Replace icp's bare
+# `java` calls with $WSO2_ICP_JAVA, then prepend a resolver that sets it (added AFTER the replace
+# so its own `bin/java` isn't itself rewritten). Backward-compatible: with the env var unset it
+# resolves to exactly the previous relative path.
 ICP_SCRIPT="$ICP_TARGET/bin/icp.sh"
 if [ -f "$ICP_SCRIPT" ]; then
-    print_info "Modifying icp.sh to use JRE from dependencies ($JRE_FOLDER)"
-    # Replace standalone 'java' invocations with the full path to the JRE java (word-boundary match)
-    sed -i '' -E "s|[[:<:]]java[[:>:]]|\"\$SCRIPT_DIR\"/../../dependencies/$JRE_FOLDER/bin/java|g" "$ICP_SCRIPT"
-fi
-
-
-
-
-# Build the component package
-pkgbuild --root "$EXTRACTION_TARGET" \
-         --identifier "$BUNDLE_IDENTIFIER" \
-         --version "$VERSION" \
-         --install-location "/" \
-         --ownership preserve \
-         --component-plist "$WORK_DIR/component.plist" \
-         "$WORK_DIR/WSO2 Integrator.pkg"
-
-sed -i '' "s/version=\"__VERSION__\"/version=\"$VERSION\"/g" "$WORK_DIR/Distribution.xml"
-
-
-# Build the final product archive
-productbuild --distribution "$WORK_DIR/Distribution.xml" \
-             --resources "$WORK_DIR" \
-             --package-path "$WORK_DIR" \
-             "wso2-integrator-$VERSION-$ARCH.pkg"
-
-sed -i '' "s/version=\"$VERSION\"/version=\"__VERSION__\"/g" "$WORK_DIR/Distribution.xml"
-
-
-# Check if the build was successful
-if [ -f "wso2-integrator-$VERSION-$ARCH.pkg" ]; then
-    print_info "Successfully created: wso2-integrator-$VERSION-$ARCH.pkg"
-    print_info "Package size: $(du -h "wso2-integrator-$VERSION-$ARCH.pkg" | cut -f1)"
+    print_info "Modifying icp.sh to use JRE (env-aware, fallback $JRE_FOLDER)"
+    sed -i '' -E "s|[[:<:]]java[[:>:]]|\"\$WSO2_ICP_JAVA\"|g" "$ICP_SCRIPT"
+    ICP_TMP="$(mktemp)"
+    {
+        head -n 1 "$ICP_SCRIPT"
+        cat <<EOF
+WSO2_ICP_JAVA=""
+_wso2_icp_sd="\$(cd "\$(dirname "\$0")" && pwd)"
+if [ -n "\$WSO2_INTEGRATOR_JRE_HOME" ] && [ -x "\$WSO2_INTEGRATOR_JRE_HOME/bin/java" ]; then
+  WSO2_ICP_JAVA="\$WSO2_INTEGRATOR_JRE_HOME/bin/java"
 else
-    print_error "Failed to create pkg package"
-    exit 1
+  WSO2_ICP_JAVA="\$_wso2_icp_sd/../../dependencies/$JRE_FOLDER/bin/java"
 fi
+EOF
+        tail -n +2 "$ICP_SCRIPT"
+    } > "$ICP_TMP"
+    mv "$ICP_TMP" "$ICP_SCRIPT"
+    # 755 explicitly, not +x: the temp file was created 0600, and an icp.sh that group/other cannot
+    # READ cannot be executed by them either (the interpreter has to read it). Root-owned installs
+    # (deb/rpm) would otherwise ship an ICP that only root can launch.
+    chmod 755 "$ICP_SCRIPT"
+fi
+
+
+
+
+# -------------------------------------------------------------------
+# Code-sign a fully-assembled app bundle (Developer ID + hardened runtime), inside-out:
+# natives inside jars, then every loose Mach-O, then nested bundles deepest-first, then
+# the top app. Falls back to ad-hoc signing when no identity is configured (local/dev builds) so
+# the app still launches. Reused for the full app and the stripped editor-only update
+# bundle (§D8) — stripping files breaks the seal, so the editor-only copy is re-signed.
+# -------------------------------------------------------------------
+ENTITLEMENTS="$WORK_DIR/entitlements.plist"
+
+# Apple refuses to notarize a Mach-O whose macOS deployment target predates 10.9, however
+# well it is signed. libjffi-1.2.jnilib -- vendored inside the streaming integrator's
+# language-server jar -- declares 10.6, and it failed the first release build that got far
+# enough for Apple to look past the missing signature. jnr's current release still ships an
+# x86_64 slice declaring 10.6, so upgrading the dependency does not settle it either.
+#
+# Bump only the slices that are actually too old. A blanket `vtool` rewrites an arm64
+# slice's LC_BUILD_VERSION into a meaningless 10.9 LC_VERSION_MIN_MACOSX -- arm64 macOS
+# starts at 11.0 -- so this walks architectures and leaves the rest alone. Must run before
+# codesign: vtool invalidates any existing signature.
+# True when a macOS version field is below the 10.9 floor the notary service enforces.
+# An absent field ("n/a", or a load command that carries neither) counts as not-old: it is
+# the caller's job to substitute a default, not this predicate's to invent one.
+_below_notary_floor() {
+    awk -v v="$1" 'BEGIN{
+        if (v == "" || v == "n/a") exit 1
+        split(v, p, ".")
+        exit (p[1] < 10 || (p[1] == 10 && p[2] < 9)) ? 0 : 1 }'
+}
+
+raise_old_deployment_target() {
+    local f="$1" arch load min sdk use_min use_sdk bumped=0
+    for arch in $(lipo -archs "$f" 2>/dev/null); do
+        # One otool per architecture. This runs for every Mach-O in the bundle and every
+        # native inside every jar, so reading it twice doubles the cost for nothing.
+        # `|| load=""` is load-bearing under `set -e`: a slice carrying neither load command
+        # makes grep exit 1, and a bare assignment would take the whole signing step down
+        # rather than skip one binary. The sibling assignments below are safe because their
+        # pipelines end in awk, which exits 0 on no input.
+        load=$(otool -l -arch "$arch" "$f" 2>/dev/null | grep -A4 -E 'LC_VERSION_MIN_MACOSX|LC_BUILD_VERSION') || load=""
+        min=$(printf '%s\n' "$load" | grep -E '^ +(version|minos) ' | head -1 | awk '{print $2}')
+        sdk=$(printf '%s\n' "$load" | grep -E '^ +sdk ' | head -1 | awk '{print $2}')
+        # Either field below the floor is enough for Apple to reject the whole archive.
+        _below_notary_floor "$min" || _below_notary_floor "$sdk" || continue
+        # Carry through whichever field was already fine. vtool sets both at once, so
+        # hardcoding either one downgrades a binary that only had the other problem --
+        # a compliant 10.13 deployment target must survive an old SDK being raised.
+        if _below_notary_floor "$min" || [ -z "$min" ] || [ "$min" = "n/a" ]; then use_min=10.9; else use_min="$min"; fi
+        if _below_notary_floor "$sdk" || [ -z "$sdk" ] || [ "$sdk" = "n/a" ]; then use_sdk=10.13; else use_sdk="$sdk"; fi
+        vtool -arch "$arch" -set-version-min macos "$use_min" "$use_sdk" -replace -output "$f" "$f"
+        bumped=1
+    done
+    # Not "raised to 10.9": when only the SDK was old the deployment target keeps its own,
+    # higher value, and the message should not claim otherwise.
+    [ "$bumped" = 1 ] && print_info "raised version fields below the 10.9 notarization floor: ${f##*/}"
+    return 0
+}
+
+sign_app_bundle() {
+    local app="$1"
+    if [ -n "${MAC_SIGNING_IDENTITY:-}" ]; then
+        print_info "Signing app with Developer ID identity: $MAC_SIGNING_IDENTITY ($app)"
+        # Executables and bundles get the entitlements (the union covers Electron + the bundled
+        # JVM, which needs jit/unsigned-exec-memory/dyld-env/library-validation exceptions);
+        # libraries get NONE -- entitlements on a dylib grant nothing and only widen what an
+        # auditor has to reason about.
+        local SIGN_OPTS=(--force --timestamp --options runtime --entitlements "$ENTITLEMENTS" --sign "$MAC_SIGNING_IDENTITY")
+        local LIB_OPTS=(--force --timestamp --options runtime --sign "$MAC_SIGNING_IDENTITY")
+
+        # 1) Native libraries INSIDE .jar archives. The notary service unpacks jars, so a JNI
+        #    library shipped in a dependency jar is rejected exactly like a loose one -- that was
+        #    the bulk of the first rejection (sqlite-jdbc, netty-tcnative, lz4-java, jansi, jffi).
+        #    Extract, sign, write back into the same entry. Runs before anything is sealed.
+        find "$app" -type f -name "*.jar" -print0 \
+            | while IFS= read -r -d '' jar; do
+                listing=$(unzip -Z1 "$jar" 2>/dev/null || true)
+                natives=$(printf '%s\n' "$listing" | grep -E '\.(dylib|jnilib|so)$' || true)
+                [ -n "$natives" ] || continue
+                # Rewriting an entry invalidates a jarsigner signature. Say so rather than ship a
+                # jar whose seal we broke -- and rather than fail a build over a jar we cannot fix.
+                if printf '%s\n' "$listing" | grep -qE '^META-INF/.*\.(SF|DSA|RSA|EC)$'; then
+                    # Not fatal: a jar we cannot fix should not block a release, and it cannot
+                    # slip through either -- the notary step fails the build and prints Apple's
+                    # log, which names the file. Annotated so it is visible without reading the
+                    # build output line by line.
+                    print_warning "jarsigner-signed, leaving its natives unsigned: $jar"
+                    [ -n "${GITHUB_ACTIONS:-}" ] && echo "::warning::jarsigner-signed jar left unsigned, notarization may reject it: $jar"
+                    continue
+                fi
+                jar_abs="$(cd "$(dirname "$jar")" && pwd)/$(basename "$jar")"
+                jar_tmp=$(mktemp -d)
+                (
+                    cd "$jar_tmp"
+                    printf '%s\n' "$natives" | while IFS= read -r entry; do
+                        unzip -qo "$jar_abs" "$entry" || continue
+                        [ -f "$entry" ] || continue
+                        file -b "$entry" | grep -q "Mach-O" || continue
+                        raise_old_deployment_target "$entry"
+                        codesign "${LIB_OPTS[@]}" "$entry"
+                        zip -q "$jar_abs" "$entry"
+                        # Read the entry back OUT of the archive and verify it. Nothing else
+                        # covers the write-back: `codesign --verify` on the app never looks
+                        # inside a jar, so a botched rewrite would pass CI clean and surface
+                        # as a native-load failure on a user's machine.
+                        rm -rf .verify && mkdir .verify
+                        ( cd .verify && unzip -qo "$jar_abs" "$entry" && codesign --verify "$entry" )
+                        rm -rf .verify
+                    done
+                )
+                rm -rf "$jar_tmp"
+              done
+
+        # 2) Every Mach-O in the bundle, wherever it lives and whatever it is called. Matching by
+        #    extension and location missed six binaries that notarization rejected:
+        #    chrome_crashpad_handler and ShipIt nested in frameworks, and choreo/tgrep/rg/
+        #    spawn-helper under Resources -- none of which carry an extension. `file` is the only
+        #    reliable test, and it is architecture-agnostic: an arm64 build ships x86_64 slices
+        #    and an x64 build ships arm64 ones. Executables take the entitlements (the union
+        #    covers Electron + the bundled JVM, which needs jit/unsigned-exec-memory/dyld-env/
+        #    library-validation exceptions); libraries take none, since entitlements on a dylib
+        #    grant nothing and only widen what an auditor has to reason about.
+        find "$app" -type f \( -perm +111 -o -name "*.dylib" -o -name "*.so" -o -name "*.node" -o -name "*.jnilib" \) -print0 \
+            | while IFS= read -r -d '' f; do
+                # Match the Mach-O KIND, not just the string: `file` also says Mach-O for object
+                # files, dSYM companions and kext bundles, none of which codesign will accept --
+                # and under `set -e` one of those would stop the build.
+                # LC_ALL=C, and not a bare assignment. `file` echoes bytes out of the file it
+                # inspects, so its output is not always valid UTF-8, and in a UTF-8 locale `tr`
+                # rejects that with "Illegal byte sequence". Under the old inline
+                # `case "$(...)"` that merely matched no arm and skipped the file silently; as
+                # an assignment it takes the whole signing step down under `set -e`, which is
+                # exactly what it did. C locale stops the error at its source so the file is
+                # classified rather than skipped; the guard keeps an unreadable one from being
+                # fatal, and says so instead of passing over it in silence.
+                # No pipeline here on purpose. Piping into `tr` meant the exit status came from
+                # `tr`, which succeeds on the empty input a failed `file` leaves behind -- so a
+                # `file` failure slipped past the guard and skipped the binary in silence, the
+                # very thing this check exists to prevent. `set -o pipefail` would fix that and
+                # break far more: this script is full of `... | grep | head`, and a grep with no
+                # match would become fatal. Checking `file` directly sidesteps both, and drops a
+                # subprocess from a loop that runs once per file in the bundle.
+                if ! desc=$(LC_ALL=C file -b "$f" 2>/dev/null); then
+                    print_warning "could not classify, leaving unsigned: $f"
+                    continue
+                fi
+                desc=${desc//$'\n'/ }
+                case "$desc" in
+                    *dSYM*|*kext*|*Mach-O*object*) continue ;;
+                    *Mach-O*executable*|*Mach-O*shared\ library*|*Mach-O*bundle*|*Mach-O*dynamically\ linked*) ;;
+                    *) continue ;;
+                esac
+                raise_old_deployment_target "$f"
+                case "$desc" in
+                    *Mach-O*executable*)
+                        # Entitlements stay where they were before this sweep existed: the bundled
+                        # JVM and Ballerina launchers under components, and the repackaged CLI. The
+                        # executables this sweep newly reaches -- rg, tgrep, choreo, spawn-helper,
+                        # ShipIt, chrome_crashpad_handler -- get the hardened runtime and nothing
+                        # else. Handing them disable-library-validation and
+                        # allow-dyld-environment-variables would let DYLD_INSERT_LIBRARIES load
+                        # arbitrary code into a Developer-ID-signed binary; spawn-helper starts
+                        # user shells, so that is not theoretical.
+                        case "$f" in
+                            "$app"/Contents/components/*|"$app"/Contents/Resources/app/bin/*)
+                                codesign "${SIGN_OPTS[@]}" "$f" ;;
+                            *)  codesign "${LIB_OPTS[@]}" "$f" ;;
+                        esac ;;
+                    *)  codesign "${LIB_OPTS[@]}" "$f" ;;
+                esac
+              done
+
+        # 3) Nested bundles (Electron frameworks + helper .apps), deepest path first.
+        find "$app" -type d \( -name "*.framework" -o -name "*.app" \) | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2- \
+            | while IFS= read -r bundle; do
+                [ "$bundle" = "$app" ] && continue
+                codesign "${SIGN_OPTS[@]}" "$bundle"
+              done
+
+        # 4) The top-level app last, then verify the seal.
+        codesign "${SIGN_OPTS[@]}" "$app"
+        codesign --verify --deep --strict --verbose=2 "$app"
+        print_info "App signed and verified: $app"
+    else
+        print_warning "MAC_SIGNING_IDENTITY not set — ad-hoc signing (not distributable or notarizable)"
+        codesign --force --deep --sign - "$app"
+    fi
+}
+
+SIGN_APP="$WSO2_TARGET/WSO2 Integrator.app"
+sign_app_bundle "$SIGN_APP"
 
 # -------------------------------------------------------------------
 # Build the DMG
@@ -326,15 +507,35 @@ APPLESCRIPT
 print_info "Finalising DMG"
 sync
 sleep 3
+# Something transiently holds a freshly-written volume — Spotlight indexing, fsevents, or the
+# Finder used for the window layout above. Three attempts two seconds apart was not enough on a
+# real arm64 runner: the build failed here after the app had already been signed.
+#
+# So: escalate the backoff to ~30s total, name the holder when it fails (otherwise the next
+# occurrence is just as mysterious as this one was), and fall back to diskutil, which can evict a
+# volume hdiutil will not.
 _detach_ok=0
-for _retry in 1 2 3; do
+for _retry in 1 2 3 4 5 6; do
     if hdiutil detach "$DMG_MOUNT_DIR" -force -quiet; then
         _detach_ok=1; break
     fi
-    [ "$_retry" -lt 3 ] && { print_info "Detach attempt $_retry failed, retrying in 2s..."; sleep 2; }
+    if [ "$_retry" -lt 6 ]; then
+        _wait=$((_retry * 2))
+        print_info "Detach attempt $_retry failed; who is holding it:"
+        lsof +D "$DMG_MOUNT_DIR" 2>/dev/null | head -8 || true
+        print_info "Retrying in ${_wait}s..."
+        sleep "$_wait"
+    fi
 done
 if [ "$_detach_ok" -eq 0 ]; then
-    print_error "Could not unmount $DMG_MOUNT_DIR after 3 attempts; aborting before DMG conversion"
+    print_info "hdiutil could not detach; trying diskutil unmount force"
+    if diskutil unmount force "$DMG_MOUNT_DIR" >/dev/null 2>&1; then
+        _detach_ok=1
+    fi
+fi
+if [ "$_detach_ok" -eq 0 ]; then
+    print_error "Could not unmount $DMG_MOUNT_DIR; aborting before DMG conversion"
+    lsof +D "$DMG_MOUNT_DIR" 2>/dev/null | head -20 || true
     exit 1
 fi
 DMG_MOUNT_DIR=""  # Clear only after successful detach so the trap can still retry on failure
@@ -351,6 +552,49 @@ else
     exit 1
 fi
 
+# Sign the DMG container itself with the Application identity (the app inside is
+# already signed); recommended for notarization and a cleaner Gatekeeper experience.
+if [ -n "${MAC_SIGNING_IDENTITY:-}" ]; then
+    print_info "Signing DMG with: $MAC_SIGNING_IDENTITY"
+    codesign --force --timestamp --sign "$MAC_SIGNING_IDENTITY" "$WORK_DIR/$DMG_NAME"
+fi
+
+# -------------------------------------------------------------------
+# Create the Squirrel.Mac auto-update payload: a zip of the SIGNED app.
+# Squirrel verifies that the Developer ID signature matches on update, so a
+# signed app zip is sufficient — it does not need to be notarized/stapled for
+# the update mechanism (the DMG covers first-install Gatekeeper). Built with
+# `ditto` to preserve symlinks and resource forks in the bundle.
+# -------------------------------------------------------------------
+MAC_ZIP="wso2-integrator-$VERSION-$ARCH-mac.zip"
+print_info "Creating Squirrel.Mac update payload: $MAC_ZIP"
+rm -f "$WORK_DIR/$MAC_ZIP"
+# INSTALLER_PROFILE=editor-update (§D8): the Squirrel update payload is EDITOR-ONLY — strip the
+# bundled Ballerina from a copy and re-sign it (the DMG, the first-install artifact, stays full).
+# After Squirrel swaps the app, the seeded Ballerina in ~/.wso2-integrator survives the swap.
+# Default (full) keeps the current behaviour for local/dev builds.
+ZIP_SRC="$SIGN_APP"
+if [ "${INSTALLER_PROFILE:-full}" = "editor-update" ]; then
+    # W-B: truly editor-only Squirrel payload — drop the entire components tree (Ballerina, ICP,
+    # JRE). All are seeded to ~/.wso2-integrator and survive the whole-.app swap; ICP requires the
+    # MI extension to read WSO2_INTEGRATOR_ICP_HOME before this payload is published (go-live gate).
+    print_info "editor-update profile: building editor-only Squirrel payload (runtimes relocated)"
+    EDITOR_APP="$WORK_DIR/editor_update/WSO2 Integrator.app"
+    rm -rf "$WORK_DIR/editor_update"
+    mkdir -p "$WORK_DIR/editor_update"
+    ditto "$SIGN_APP" "$EDITOR_APP"
+    rm -rf "$EDITOR_APP/Contents/components"
+    sign_app_bundle "$EDITOR_APP"
+    ZIP_SRC="$EDITOR_APP"
+fi
+ditto -c -k --sequesterRsrc --keepParent "$ZIP_SRC" "$WORK_DIR/$MAC_ZIP"
+if [ -f "$WORK_DIR/$MAC_ZIP" ]; then
+    print_info "Successfully created: $MAC_ZIP ($(du -h "$WORK_DIR/$MAC_ZIP" | cut -f1))"
+else
+    print_error "Failed to create Squirrel.Mac update zip"
+    exit 1
+fi
+
 # Temp files cleaned by the EXIT trap
 trap - EXIT
 dmg_cleanup
@@ -361,6 +605,5 @@ rm -rf "${ICP_TARGET:?}"/*
 rm -rf "${BALLERINA_TARGET:?}"/*
 rm -rf "$EXTRACTION_TARGET/Library"
 rm -rf "$EXTRACTION_TARGET/Applications"
-rm -rf "$WORK_DIR/WSO2 Integrator.pkg"
 
 print_info "Done!"

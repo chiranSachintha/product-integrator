@@ -23,13 +23,18 @@
 export const SHARED_COMMANDS = {
     FORCE_UPDATE_PROJECT_ARTIFACTS: 'ballerina.force.update.artifacts',
     SHOW_VISUALIZER: 'ballerina.showVisualizer',
-    GET_STATE_CONTEXT: 'ballerina.get.stateContext'
+    GET_STATE_CONTEXT: 'ballerina.get.stateContext',
+    GET_BI_FORM_WS_BOOTSTRAP: 'ballerina.getBiFormWsBootstrap'
 };
 
 export const BI_COMMANDS = {
     REFRESH_COMMAND: 'BI.project-explorer.refresh',
     PROJECT_EXPLORER: 'BI.project-explorer',
     SHOW_OVERVIEW: 'BI.project-explorer.overview',
+    ADD_DATA_MAPPER: 'BI.project-explorer.add-data-mapper',
+    ADD_NATURAL_FUNCTION: 'BI.project-explorer.add-natural-function',
+    ADD_WORKFLOW: 'BI.project-explorer.add-workflow',
+    ADD_WORKFLOW_ACTIVITY: 'BI.project-explorer.add-workflow-activity',
     NOTIFY_PROJECT_EXPLORER: 'BI.project-explorer.notify',
 };
 
@@ -42,6 +47,8 @@ export enum DIRECTORY_MAP {
     AUTOMATION = 'AUTOMATION',
     LISTENER = 'LISTENER',
     CONNECTION = 'CONNECTION',
+    AGENT = 'AGENT',
+    AGENT_DEFINITION = 'AGENT_DEFINITION',
     FUNCTION = 'FUNCTION',
     TYPE = 'TYPE',
     CONFIGURABLE = 'CONFIGURABLE',
@@ -51,6 +58,8 @@ export enum DIRECTORY_MAP {
     CONNECTOR = 'CONNECTOR',
     RESOURCE = 'RESOURCE',
     REMOTE = 'REMOTE',
+    WORKFLOW = 'WORKFLOW',
+    ACTIVITY = 'ACTIVITY',
 }
 
 export enum MACHINE_VIEW {
@@ -74,6 +83,9 @@ export interface ProjectStructureArtifactResponse {
     type: DIRECTORY_MAP;
     path: string;
     icon: string;
+    iconColor?: string;
+    iconLight?: string;
+    iconDark?: string;
     position?: NodePosition;
     context?: string;
     resources?: ProjectStructureArtifactResponse[];
